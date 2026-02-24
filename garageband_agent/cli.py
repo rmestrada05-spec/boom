@@ -8,6 +8,12 @@ import sys
 from dataclasses import asdict
 
 from .knowledge_base import GARAGEBAND_CONTROLS, get_control, search_controls
+from .live_agent import (
+    AppleScriptController,
+    LiveGarageBandAgent,
+    live_report_to_pretty_text,
+    run_live_agent_loop,
+)
 from .planner import build_action_plan, plan_to_json, plan_to_pretty_text
 from .song_analyzer import analyze_song, analysis_to_json, analysis_to_pretty_text
 from .splitter import (
@@ -129,6 +135,31 @@ def build_parser() -> argparse.ArgumentParser:
         default=8,
         help="When not using --json, max split clip previews per event type.",
     )
+    parser.add_argument(
+        "--run-live-command",
+        default=None,
+        help="Execute a single natural-language command against GarageBand live automation.",
+    )
+    parser.add_argument(
+        "--live-agent",
+        action="store_true",
+        help="Start interactive live GarageBand command loop.",
+    )
+    parser.add_argument(
+        "--dry-run-live",
+        action="store_true",
+        help="Preview live automation actions without clicking keys/menu items.",
+    )
+    parser.add_argument(
+        "--confirm-each-live",
+        action="store_true",
+        help="Prompt before each control action in live mode.",
+    )
+    parser.add_argument(
+        "--garageband-app-name",
+        default="GarageBand",
+        help="macOS app/process name to automate (default: GarageBand).",
+    )
     return parser
 
 
@@ -225,6 +256,39 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         return 0
+    if args.run_live_command:
+        controller = AppleScriptController(app_name=args.garageband_app_name)
+        agent = LiveGarageBandAgent(
+            controller=controller,
+            dry_run=args.dry_run_live,
+            auto_activate=True,
+        )
+        report = agent.execute_prompt(
+            args.run_live_command, confirm_each=args.confirm_each_live
+        )
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "prompt": report.prompt,
+                        "summary": report.summary,
+                        "actions": [asdict(action) for action in report.actions],
+                        "warnings": list(report.warnings),
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            print(live_report_to_pretty_text(report))
+        return 0
+    if args.live_agent:
+        controller = AppleScriptController(app_name=args.garageband_app_name)
+        agent = LiveGarageBandAgent(
+            controller=controller,
+            dry_run=args.dry_run_live,
+            auto_activate=True,
+        )
+        return run_live_agent_loop(agent, confirm_each=args.confirm_each_live)
 
     prompt = " ".join(args.prompt).strip()
     if not prompt:

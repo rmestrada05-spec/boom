@@ -69,6 +69,34 @@ Each split run writes:
 - `CACHE_DIR/index.json` (clip metadata cache)
 - `CACHE_DIR/import_manifest.txt` (Finder/open instructions for GarageBand drag-drop)
 
+### Live GarageBand automation agent (macOS)
+
+```bash
+# Preview what would be clicked (safe dry-run)
+python3 -m garageband_agent \
+  --run-live-command "add a bass sound at 160bpm to have a gabber feel" \
+  --dry-run-live
+
+# Execute one command live against GarageBand
+python3 -m garageband_agent \
+  --run-live-command "play and loop the current section"
+
+# Start interactive live loop
+python3 -m garageband_agent --live-agent
+```
+
+In live mode the assistant can trigger shortcut/menu-driven controls (play/stop,
+record, new track, editor/library toggles, export, etc.). Some parameter-heavy
+controls (tempo field edits, plugin dial tuning, send levels) are flagged as
+manual-required steps in the output so you still get guided execution safely.
+
+#### macOS permissions required for live mode
+
+1. Open **System Settings > Privacy & Security > Accessibility**
+2. Enable your terminal app (Terminal or iTerm)  
+3. Open **System Settings > Privacy & Security > Automation**
+4. Allow Terminal/iTerm to control **System Events** and **GarageBand**
+
 ## Running tests
 
 ```bash
@@ -87,3 +115,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
   `librosa` in your environment.
 - Split extraction uses heuristic source enhancement (`clean_4k` profile): HPSS,
   spectral denoise gating, and tonal cleanup for cleaner pulls with less mud.
+- Live automation uses AppleScript UI scripting and depends on GarageBand menu/
+  shortcut behavior, so some actions can require manual confirmation.
