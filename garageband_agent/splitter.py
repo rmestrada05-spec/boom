@@ -525,7 +525,7 @@ def _frequency_profile(freqs: np.ndarray, event_type: str) -> np.ndarray:
     def gaussian(center: float, width: float) -> np.ndarray:
         return np.exp(-0.5 * ((freqs - center) / max(1.0, width)) ** 2)
 
-    low = 1.0 / (1.0 + np.exp((freqs - 130.0) / 28.0))
+    low = _sigmoid((130.0 - freqs) / 28.0)
     mid = gaussian(850.0, 750.0)
     upper_mid = gaussian(2800.0, 1400.0)
     air = gaussian(7000.0, 3200.0)
@@ -582,7 +582,7 @@ def _tonal_cleanup(
 
     # Remove low rumble unless the target is low-end focused.
     if event_type not in ("bass_hits", "kick_hits"):
-        high_pass = 1.0 / (1.0 + np.exp(-(freqs - 55.0) / 10.0))
+        high_pass = _sigmoid((freqs - 55.0) / 10.0)
         gain *= high_pass
 
     # Reduce mud and harshness for cleaner pulls.
@@ -593,17 +593,17 @@ def _tonal_cleanup(
 
     # Focus bandwidth by source type.
     if event_type == "bass_hits":
-        low_pass = 1.0 / (1.0 + np.exp((freqs - 280.0) / 25.0))
+        low_pass = _sigmoid((280.0 - freqs) / 25.0)
         gain *= np.clip(low_pass + 0.10, 0.0, 1.0)
     elif event_type == "kick_hits":
-        low_pass = 1.0 / (1.0 + np.exp((freqs - 6500.0) / 1200.0))
+        low_pass = _sigmoid((6500.0 - freqs) / 1200.0)
         gain *= np.clip(low_pass + 0.10, 0.0, 1.0)
     elif event_type == "snare_hits":
-        high_pass = 1.0 / (1.0 + np.exp(-(freqs - 110.0) / 25.0))
+        high_pass = _sigmoid((freqs - 110.0) / 25.0)
         gain *= np.clip(high_pass, 0.0, 1.0)
     elif event_type in ("lead_vocal_entries", "background_vocal_entries"):
-        high_pass = 1.0 / (1.0 + np.exp(-(freqs - 90.0) / 18.0))
-        low_pass = 1.0 / (1.0 + np.exp((freqs - 9800.0) / 1700.0))
+        high_pass = _sigmoid((freqs - 90.0) / 18.0)
+        low_pass = _sigmoid((9800.0 - freqs) / 1700.0)
         gain *= np.clip(high_pass * low_pass + 0.08, 0.0, 1.0)
 
     processed = np.fft.irfft(spectrum * gain, n=n)[: signal.size].astype(np.float32)
@@ -615,3 +615,8 @@ def _normalize_to_peak(signal: np.ndarray, peak: float = 0.95) -> np.ndarray:
     if max_abs < 1e-8:
         return signal.astype(np.float32)
     return (signal * (peak / max_abs)).astype(np.float32)
+
+
+def _sigmoid(values: np.ndarray) -> np.ndarray:
+    clipped = np.clip(values, -60.0, 60.0)
+    return 1.0 / (1.0 + np.exp(-clipped))
