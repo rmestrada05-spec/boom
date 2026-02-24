@@ -17,32 +17,42 @@ and want concrete, button-level action plans in GarageBand.
 ## Quick start
 
 ```bash
-python -m garageband_agent "add a bass sound at 160bpm to have a gabber feel to the track"
+python3 -m garageband_agent "add a bass sound at 160bpm to have a gabber feel to the track"
 ```
 
 ### List controls
 
 ```bash
-python -m garageband_agent --list-controls
-python -m garageband_agent --list-controls "automation"
+python3 -m garageband_agent --list-controls
+python3 -m garageband_agent --list-controls "automation"
 ```
 
 ### Show a single control
 
 ```bash
-python -m garageband_agent --show-control plugin_channel_eq
+python3 -m garageband_agent --show-control plugin_channel_eq
 ```
 
 ### JSON output (for automation)
 
 ```bash
-python -m garageband_agent --json "tune for my 2011 Jetta TDI and club 80x45x16 ft"
+python3 -m garageband_agent --json "tune for my 2011 Jetta TDI and club 80x45x16 ft"
+```
+
+### Analyze an uploaded song recording
+
+```bash
+# Readable summary
+python3 -m garageband_agent --analyze-file "/path/to/song.wav"
+
+# Machine-readable output
+python3 -m garageband_agent --analyze-file "/path/to/song.wav" --json
 ```
 
 ## Running tests
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
 ## Notes
@@ -51,3 +61,7 @@ python -m unittest discover -s tests -p "test_*.py"
   drive GarageBand UI automatically.
 - The control knowledge base can be expanded with more detailed, versioned
   GarageBand mappings over time.
+- Song analysis labels are heuristic estimates with confidence scores; they are
+  meant to speed creative review, not replace full stem-level transcription.
+- WAV input is supported out of the box. For MP3/AAC and other formats, install
+  `librosa` in your environment.

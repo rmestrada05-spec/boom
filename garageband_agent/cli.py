@@ -9,6 +9,7 @@ from dataclasses import asdict
 
 from .knowledge_base import GARAGEBAND_CONTROLS, get_control, search_controls
 from .planner import build_action_plan, plan_to_json, plan_to_pretty_text
+from .song_analyzer import analyze_song, analysis_to_json, analysis_to_pretty_text
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +41,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-control",
         default=None,
         help="Show detailed info for a single control by control_id.",
+    )
+    parser.add_argument(
+        "--analyze-file",
+        default=None,
+        help="Analyze an uploaded audio file and return BPM + timestamped events.",
+    )
+    parser.add_argument(
+        "--max-analysis-preview",
+        type=int,
+        default=20,
+        help="When not using --json, max timestamps previewed per event type.",
     )
     return parser
 
@@ -85,6 +97,21 @@ def main(argv: list[str] | None = None) -> int:
         return _print_controls(args.list_controls, args.json)
     if args.show_control:
         return _print_control(args.show_control, args.json)
+    if args.analyze_file:
+        try:
+            report = analyze_song(args.analyze_file)
+        except Exception as exc:
+            print(f"Song analysis failed: {exc}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(analysis_to_json(report))
+        else:
+            print(
+                analysis_to_pretty_text(
+                    report, max_timestamps_per_type=max(1, args.max_analysis_preview)
+                )
+            )
+        return 0
 
     prompt = " ".join(args.prompt).strip()
     if not prompt:
