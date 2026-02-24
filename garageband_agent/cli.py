@@ -10,6 +10,14 @@ from dataclasses import asdict
 from .knowledge_base import GARAGEBAND_CONTROLS, get_control, search_controls
 from .planner import build_action_plan, plan_to_json, plan_to_pretty_text
 from .song_analyzer import analyze_song, analysis_to_json, analysis_to_pretty_text
+from .splitter import (
+    cached_clips_to_json,
+    cached_clips_to_pretty_text,
+    list_cached_clips,
+    split_song_to_cache,
+    splitter_report_to_json,
+    splitter_report_to_pretty_text,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,6 +60,74 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help="When not using --json, max timestamps previewed per event type.",
+    )
+    parser.add_argument(
+        "--split-file",
+        default=None,
+        help=(
+            "Split an uploaded song into cleaner timestamped clips and store "
+            "them in cache for GarageBand import."
+        ),
+    )
+    parser.add_argument(
+        "--split-event-types",
+        default="",
+        help=(
+            "Comma-separated event types to split (for example: "
+            "bass_hits,synth_hits,lead_vocal_entries). "
+            "If omitted, default split targets are used."
+        ),
+    )
+    parser.add_argument(
+        "--split-max-per-type",
+        type=int,
+        default=12,
+        help="Max extracted clips per event type when splitting.",
+    )
+    parser.add_argument(
+        "--split-min-confidence",
+        type=float,
+        default=0.45,
+        help="Minimum event confidence threshold for splitting clips.",
+    )
+    parser.add_argument(
+        "--split-pre-roll",
+        type=float,
+        default=0.08,
+        help="Seconds before each timestamp to include in extracted clips.",
+    )
+    parser.add_argument(
+        "--split-post-roll",
+        type=float,
+        default=0.90,
+        help="Seconds after each timestamp to include in extracted clips.",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default=".garageband_cache",
+        help="Cache directory used for split clip storage and manifests.",
+    )
+    parser.add_argument(
+        "--list-cache",
+        action="store_true",
+        help="List cached clips currently stored in --cache-dir.",
+    )
+    parser.add_argument(
+        "--cache-event-type",
+        default=None,
+        help="Optional cache event-type filter used with --list-cache.",
+    )
+    parser.add_argument(
+        "--cache-limit",
+        type=int,
+        default=100,
+        help="Max cached clips to show with --list-cache.",
+    )
+    parser.add_argument(
+        "--max-split-preview",
+        type=int,
+        default=8,
+        help="When not using --json, max split clip previews per event type.",
     )
     return parser
 
@@ -97,6 +173,43 @@ def main(argv: list[str] | None = None) -> int:
         return _print_controls(args.list_controls, args.json)
     if args.show_control:
         return _print_control(args.show_control, args.json)
+    if args.list_cache:
+        clips = list_cached_clips(
+            cache_dir=args.cache_dir,
+            event_type=args.cache_event_type,
+            limit=max(0, args.cache_limit),
+        )
+        if args.json:
+            print(cached_clips_to_json(clips))
+        else:
+            print(cached_clips_to_pretty_text(clips))
+        return 0
+    if args.split_file:
+        event_types = tuple(
+            token.strip() for token in args.split_event_types.split(",") if token.strip()
+        )
+        try:
+            report = split_song_to_cache(
+                file_path=args.split_file,
+                cache_dir=args.cache_dir,
+                event_types=event_types or None,
+                max_events_per_type=max(1, args.split_max_per_type),
+                min_confidence=min(max(0.0, args.split_min_confidence), 1.0),
+                pre_roll_seconds=max(0.0, args.split_pre_roll),
+                post_roll_seconds=max(0.05, args.split_post_roll),
+            )
+        except Exception as exc:
+            print(f"Song split failed: {exc}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(splitter_report_to_json(report))
+        else:
+            print(
+                splitter_report_to_pretty_text(
+                    report, max_preview_per_type=max(1, args.max_split_preview)
+                )
+            )
+        return 0
     if args.analyze_file:
         try:
             report = analyze_song(args.analyze_file)

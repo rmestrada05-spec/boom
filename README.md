@@ -49,6 +49,26 @@ python3 -m garageband_agent --analyze-file "/path/to/song.wav"
 python3 -m garageband_agent --analyze-file "/path/to/song.wav" --json
 ```
 
+### Split timestamped sounds into a cache for GarageBand
+
+```bash
+# Extract default event types into .garageband_cache/clips
+python3 -m garageband_agent --split-file "/path/to/song.wav"
+
+# Extract only bass + lead vocals
+python3 -m garageband_agent \
+  --split-file "/path/to/song.wav" \
+  --split-event-types "bass_hits,lead_vocal_entries"
+
+# List cached clips to quickly reuse in new projects
+python3 -m garageband_agent --list-cache
+```
+
+Each split run writes:
+- `CACHE_DIR/clips/*.wav` (default is 48 kHz, 24-bit WAV)
+- `CACHE_DIR/index.json` (clip metadata cache)
+- `CACHE_DIR/import_manifest.txt` (Finder/open instructions for GarageBand drag-drop)
+
 ## Running tests
 
 ```bash
@@ -65,3 +85,5 @@ python3 -m unittest discover -s tests -p "test_*.py"
   meant to speed creative review, not replace full stem-level transcription.
 - WAV input is supported out of the box. For MP3/AAC and other formats, install
   `librosa` in your environment.
+- Split extraction uses heuristic source enhancement (`clean_4k` profile): HPSS,
+  spectral denoise gating, and tonal cleanup for cleaner pulls with less mud.
