@@ -11,6 +11,11 @@ import pandas as pd
 import streamlit as st
 
 from song_analyzer.analysis import analyze_song
+from song_analyzer.garageband_export import (
+    build_garageband_blueprint_midi,
+    build_garageband_blueprint_text,
+    build_garageband_blueprint_tsv,
+)
 
 
 SUPPORTED_TYPES = ["wav", "mp3", "m4a", "flac", "ogg", "aac"]
@@ -138,6 +143,50 @@ def main() -> None:
     )
     summary_df["Avg Confidence"] = summary_df["Avg Confidence"].round(3)
     st.dataframe(summary_df, use_container_width=True)
+
+    st.subheader("GarageBand Rip-Off Kit (Import + Copy/Paste)")
+    st.markdown(
+        "This section gives you assets you can directly use in GarageBand:\n"
+        "1. **MIDI Blueprint**: import into GarageBand to create editable arrangement lanes.\n"
+        "2. **Build Sheet (TXT)**: copy/paste track setup + FX chain + timestamps.\n"
+        "3. **Track Sheet (TSV)**: paste into Notes/Sheets for detailed editing."
+    )
+    midi_data = build_garageband_blueprint_midi(detections, bpm=result["bpm"])
+    blueprint_text = build_garageband_blueprint_text(result)
+    blueprint_tsv = build_garageband_blueprint_tsv(detections)
+
+    import_col_1, import_col_2, import_col_3 = st.columns(3)
+    with import_col_1:
+        st.download_button(
+            "Download MIDI Blueprint (.mid)",
+            data=midi_data,
+            file_name="garageband_blueprint.mid",
+            mime="audio/midi",
+        )
+    with import_col_2:
+        st.download_button(
+            "Download Build Sheet (.txt)",
+            data=blueprint_text.encode("utf-8"),
+            file_name="garageband_build_sheet.txt",
+            mime="text/plain",
+        )
+    with import_col_3:
+        st.download_button(
+            "Download Track Sheet (.tsv)",
+            data=blueprint_tsv.encode("utf-8"),
+            file_name="garageband_track_sheet.tsv",
+            mime="text/tab-separated-values",
+        )
+
+    st.caption(
+        "Copy this text directly (Cmd+A/Cmd+C) into your notes while producing, then mirror "
+        "its track list/effect chain in GarageBand."
+    )
+    st.text_area(
+        "Copy/Paste GarageBand Build Sheet",
+        value=blueprint_text,
+        height=420,
+    )
 
     st.subheader("Export Results")
     csv_data = detections_df.to_csv(index=False).encode("utf-8")
