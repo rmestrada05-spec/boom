@@ -49,6 +49,16 @@ streamlit run app.py
 
 Then open the local URL shown in your terminal (typically `http://localhost:8501`).
 
+## Deploy free (Streamlit Community Cloud)
+
+1. Push this repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io/).
+3. Click **New app** and select this repository/branch.
+4. Set the main file path to `app.py`.
+5. Deploy.
+
+Streamlit Community Cloud will install `requirements.txt` automatically.
+
 ## Usage
 
 1. Upload a song file.
