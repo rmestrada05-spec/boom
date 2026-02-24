@@ -1,0 +1,8 @@
+streamlit
+librosa
+numpy
+pandas
+scipy
+soundfile
+altair
+audioread
