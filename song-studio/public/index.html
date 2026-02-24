@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Song Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Step 17: Splash on launch. Replace with real video player if desired. -->
+  <div id="splash" class="splash" role="dialog" aria-label="Loading">
+    <p class="splash__text">Playing AI-generated video of Danny McBride in a bikini smoking a cigarette…</p>
+  </div>
+
+  <!-- Step 20: First Run Setup — dependency check (one-time) -->
+  <div id="setup-screen" class="setup-screen" hidden role="dialog" aria-labelledby="setup-title" aria-describedby="setup-status">
+    <div class="setup-dialog">
+      <h2 id="setup-title" class="setup-title">First Run Setup</h2>
+      <p id="setup-status" class="setup-status">Checking dependencies…</p>
+      <div id="setup-commands" class="setup-commands" hidden>
+        <p class="rack-label">Run this in Terminal (copy and paste):</p>
+        <pre id="setup-pip-command" class="setup-pre" aria-label="Pip install command">python3 -m pip install torch torchaudio demucs librosa moviepy pydub ffmpeg-python numpy soundfile</pre>
+        <div id="setup-ffmpeg" class="setup-ffmpeg" hidden>
+          <p class="rack-label">Install FFmpeg (macOS):</p>
+          <pre class="setup-pre">brew install ffmpeg</pre>
+          <p class="setup-ffmpeg-link">If you don’t have Homebrew: <a href="https://brew.sh" target="_blank" rel="noopener noreferrer">brew.sh</a></p>
+        </div>
+      </div>
+      <p id="setup-all-ok" class="setup-all-ok" hidden>All dependencies are installed. You're ready to go.</p>
+      <div class="setup-actions">
+        <button type="button" id="setup-retry-btn" class="btn-accent" hidden>Retry</button>
+        <button type="button" id="setup-continue-btn" class="btn-accent">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== Steps 21–23: Reliability & error UI (right after setup & foundation) ========== -->
+  <!-- Step 21: Operation error popup (friendly message + expandable detail, Retry, Copy Error) -->
+  <div id="operation-error" class="operation-error" hidden role="alert" aria-live="assertive">
+    <div class="operation-error-dialog">
+      <p id="operation-error-message" class="operation-error-message"></p>
+      <button type="button" id="operation-error-toggle" class="operation-error-toggle" aria-expanded="false">Technical details</button>
+      <pre id="operation-error-detail" class="operation-error-detail" hidden></pre>
+      <div class="operation-error-actions">
+        <button type="button" id="operation-error-retry" class="btn-accent">Retry</button>
+        <button type="button" id="operation-error-copy" class="btn-secondary">Copy Error</button>
+        <button type="button" id="operation-error-dismiss" class="btn-secondary">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 22: Progress modal for long operations (analysis, stem separation) -->
+  <div id="progress-modal" class="progress-modal" hidden role="dialog" aria-labelledby="progress-modal-title" aria-describedby="progress-modal-message" aria-busy="true">
+    <div class="progress-modal-dialog">
+      <h2 id="progress-modal-title" class="progress-modal-title">Working…</h2>
+      <p id="progress-modal-message" class="progress-modal-message"></p>
+      <p id="progress-modal-subtext" class="progress-modal-subtext" hidden></p>
+      <div id="progress-modal-spinner" class="progress-modal-spinner" aria-hidden="false">
+        <div class="spinner" aria-hidden="true"></div>
+      </div>
+      <div id="progress-modal-bar-wrap" class="progress-modal-bar-wrap" hidden>
+        <div id="progress-modal-bar" class="progress-modal-bar" style="width: 0%"></div>
+      </div>
+      <p id="progress-modal-pct" class="progress-modal-pct" hidden></p>
+    </div>
+  </div>
+
+  <!-- Step 23: Cache size warning on launch when > 5 GB -->
+  <div id="cache-size-warning" class="cache-size-warning" hidden role="alert">
+    <p class="cache-size-warning-text">Cache is getting large — consider clearing old files?</p>
+    <a href="#" id="cache-size-warning-link" class="cache-size-warning-link">Manage Cache</a>
+  </div>
+
+  <!-- ========== Steps 24–26: After project save/load ========== -->
+  <!-- Step 25: Recover last session (autosave newer than last manual save) -->
+  <div id="recover-session-modal" class="setup-screen" hidden role="dialog" aria-labelledby="recover-session-title" aria-describedby="recover-session-message">
+    <div class="setup-dialog">
+      <h2 id="recover-session-title" class="setup-title">Recover last session?</h2>
+      <p id="recover-session-message" class="setup-status">An autosave from your previous session was found. Load it?</p>
+      <div class="setup-actions">
+        <button type="button" id="recover-session-yes" class="btn-accent">Yes</button>
+        <button type="button" id="recover-session-no" class="btn-secondary">No</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 26: Low RAM / system requirements warning on launch -->
+  <div id="system-requirements-warning" class="cache-size-warning system-requirements-warning" hidden role="alert">
+    <p id="system-requirements-warning-text" class="cache-size-warning-text">Your system has limited RAM — analysis may be slow. Close other apps for best performance.</p>
+  </div>
+
+  <!-- ========== Steps 27–30: Polish & UX (tour, export settings, quit confirm) — with Step 8 ========== -->
+  <!-- Step 27: First-launch guided tour + What is Vibe Studio? -->
+  <div id="tour-overlay" class="tour-overlay" hidden role="dialog" aria-labelledby="tour-title" aria-describedby="tour-message">
+    <div id="tour-backdrop" class="tour-backdrop"></div>
+    <div id="tour-card" class="tour-card">
+      <h2 id="tour-title" class="tour-title"></h2>
+      <p id="tour-message" class="tour-message"></p>
+      <p id="tour-link-wrap" class="tour-link-wrap" hidden><a id="tour-link" href="#" target="_blank" rel="noopener noreferrer" class="tour-link"></a></p>
+      <div class="tour-actions">
+        <button type="button" id="tour-skip" class="btn-secondary">Skip tour</button>
+        <button type="button" id="tour-back" class="btn-secondary" hidden>Back</button>
+        <button type="button" id="tour-next" class="btn-accent">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 29: Quit confirmation (polish & UX) when there are unsaved changes -->
+  <div id="quit-confirm-overlay" class="quit-confirm-overlay" hidden role="dialog" aria-labelledby="quit-confirm-title" aria-describedby="quit-confirm-message">
+    <div class="quit-confirm-dialog">
+      <h2 id="quit-confirm-title" class="quit-confirm-title">Unsaved changes</h2>
+      <p id="quit-confirm-message" class="quit-confirm-message">You have unsaved changes. Save project before quitting?</p>
+      <div class="quit-confirm-actions">
+        <button type="button" id="quit-confirm-save" class="btn-accent">Save</button>
+        <button type="button" id="quit-confirm-no" class="btn-secondary">Don't save</button>
+        <button type="button" id="quit-confirm-cancel" class="btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="error-banner" class="error-banner" hidden role="alert">
+    <div class="error-banner-content">
+      <p class="error-banner-text">File appears corrupted or unreadable. Please try another recording.</p>
+      <p id="error-banner-detail" class="error-banner-detail" hidden></p>
+    </div>
+    <button type="button" id="retry-btn" class="error-banner-retry">Retry</button>
+  </div>
+
+  <main class="app">
+    <header class="app-header">
+      <h1>Song Studio</h1>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Main sections — all features in one window">
+      <button type="button" class="tab tab--active" data-tab="studio" role="tab" aria-selected="true">Studio</button>
+      <button type="button" class="tab" data-tab="voice" role="tab" aria-selected="false">Voice</button>
+      <button type="button" class="tab" data-tab="customize" role="tab" aria-selected="false">Customize</button>
+    </nav>
+
+    <section id="studio-tab" class="tab-panel tab-panel--active" role="tabpanel" aria-labelledby="studio">
+      <div class="channel-rack">
+        <div class="rack-panel rack-project">
+          <h2 class="rack-title">Project</h2>
+          <div class="rack-body project-actions">
+            <button type="button" id="save-project-btn" class="btn-accent">Save Project As…</button>
+            <button type="button" id="load-project-btn" class="btn-secondary">Load Project…</button>
+            <input type="file" id="load-project-input" class="file-input file-input--hidden" accept=".vibe" aria-label="Choose .vibe project file" />
+            <button type="button" id="new-project-btn" class="btn-secondary">New Project</button>
+          </div>
+        </div>
+        <div class="rack-panel rack-session">
+          <h2 class="rack-title">Session</h2>
+          <div class="rack-body">
+            <label for="session-songs-select" class="rack-label">Loaded songs</label>
+            <select id="session-songs-select" class="session-songs-select" aria-label="Switch between loaded songs" disabled>
+              <option value="">No songs loaded</option>
+            </select>
+            <p id="session-placeholder" class="rack-placeholder">Upload a recording to add a song to the session.</p>
+          </div>
+        </div>
+        <div class="rack-panel rack-upload">
+          <h2 class="rack-title">Upload</h2>
+          <div class="rack-body">
+            <input type="file" id="file-input" class="file-input" accept=".mp4,.mov,.mkv,.avi" aria-label="Choose screen recording file" />
+            <button type="button" id="upload-btn" class="btn-accent" aria-label="Upload screen recording">Upload Screen Recording</button>
+            <div id="loading-state" class="loading-state" hidden>
+              <div class="spinner" aria-hidden="true"></div>
+              <p class="loading-label">Validating & Loading…</p>
+            </div>
+            <div id="error-state" class="error-state" hidden>
+              <p class="error-message" id="error-message"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rack-panel rack-analysis">
+          <h2 class="rack-title">Analysis</h2>
+          <div class="rack-body">
+            <div id="loaded-state" class="loaded-state" hidden>
+              <p class="loaded-info" id="loaded-info"></p>
+              <button type="button" id="analyze-btn" class="btn-accent">Analyze song parts</button>
+              <div id="analyzing-state" class="analyzing-state" hidden>
+                <div class="spinner" aria-hidden="true"></div>
+                <p class="loading-label">Analyzing…</p>
+              </div>
+              <div id="analysis-panel" class="analysis-panel" hidden>
+                <label for="analysis-output" class="rack-label">Song parts analysis</label>
+                <textarea id="analysis-output" class="analysis-output" readonly rows="16" aria-label="Song parts analysis output"></textarea>
+              </div>
+            </div>
+            <p id="analysis-placeholder" class="rack-placeholder">Upload a recording to see analysis.</p>
+          </div>
+        </div>
+
+        <div class="rack-panel rack-chat">
+          <h2 class="rack-title">Chat</h2>
+          <div class="rack-body">
+            <label for="modify-input" class="rack-label">Describe your change</label>
+            <textarea id="modify-input" class="modify-input" rows="2" placeholder="e.g., make bass in intro deeper but keep vibe, raise vocal pitch in chorus by ~3 semitones, add subtle reverb to pads" aria-label="Describe your change"></textarea>
+            <div class="modify-actions">
+              <button type="button" id="apply-modify-btn" class="btn-accent">Apply</button>
+              <button type="button" id="undo-modify-btn" class="undo-modify-btn">Undo Last Change</button>
+              <button type="button" id="redo-modify-btn" class="undo-modify-btn">Redo</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="rack-panel rack-versions">
+          <h2 class="rack-title">Versions</h2>
+          <div class="rack-body">
+            <div id="diff-summary-list" class="diff-summary-list" hidden>
+              <ul id="diff-summary-entries" class="diff-summary-entries" aria-label="Modification history"></ul>
+            </div>
+            <p id="versions-placeholder" class="rack-placeholder">No modifications yet.</p>
+          </div>
+        </div>
+
+        <div class="rack-panel rack-layers">
+          <h2 class="rack-title">Layers</h2>
+          <div class="rack-body">
+            <input type="file" id="layer-file-input" class="file-input" accept=".wav,.mp3,.m4a,.ogg,.mp4,.mov,.mkv,.avi" aria-label="Choose audio or video layer" />
+            <button type="button" id="layer-add-btn" class="btn-accent">Add Audio/Video Layer</button>
+            <div id="layer-form" class="layer-form" hidden>
+              <label for="layer-mix-mode" class="rack-label">Mix mode</label>
+              <select id="layer-mix-mode" class="layer-select" aria-label="How to mix the layer">
+                <option value="overlay50">Overlay at 50% volume</option>
+                <option value="replace">Replace section</option>
+                <option value="append">Append</option>
+                <option value="sidechain">Sidechain ducking</option>
+              </select>
+              <div id="layer-replace-times" class="layer-replace-times" hidden>
+                <label for="layer-start" class="rack-label">Start time (seconds)</label>
+                <input type="number" id="layer-start" class="layer-number" min="0" step="0.1" value="0" aria-label="Start time" />
+                <label for="layer-end" class="rack-label">End time (seconds)</label>
+                <input type="number" id="layer-end" class="layer-number" min="0" step="0.1" value="10" aria-label="End time" />
+              </div>
+              <button type="button" id="layer-apply-btn" class="btn-accent">Add Layer</button>
+            </div>
+            <div id="layer-loading" class="loading-state" hidden>
+              <div class="spinner" aria-hidden="true"></div>
+              <p class="loading-label">Adding layer…</p>
+            </div>
+            <div class="cached-voice-section">
+              <button type="button" id="add-cached-voice-btn" class="btn-accent">Add Cached Voice to Song</button>
+              <div id="cached-voice-form" class="cached-voice-form" hidden>
+                <label for="cached-voice-select" class="rack-label">Cached voice</label>
+                <select id="cached-voice-select" class="layer-select" aria-label="Choose cached voice"></select>
+                <label class="export-checkbox-label">
+                  <input type="checkbox" id="cached-voice-pitch-formant" class="export-checkbox" />
+                  <span>Pitch/formant match to song vocals</span>
+                </label>
+                <button type="button" id="cached-voice-apply-btn" class="btn-accent">Add Cached Voice</button>
+              </div>
+            <div id="cached-voice-loading" class="loading-state" hidden>
+              <div class="spinner" aria-hidden="true"></div>
+              <p class="loading-label">Adding cached voice…</p>
+            </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rack-panel rack-stems">
+          <h2 class="rack-title">Sound Library</h2>
+          <div class="rack-body">
+            <label for="stem-select" class="rack-label">Select stem</label>
+            <select id="stem-select" class="layer-select" aria-label="Stem type to save">
+              <option value="drums">Drums</option>
+              <option value="bass">Bass</option>
+              <option value="vocals">Vocals</option>
+              <option value="other">Other</option>
+            </select>
+            <button type="button" id="save-stem-btn" class="btn-accent">Save Stem to Library</button>
+          </div>
+        </div>
+
+        <div class="rack-panel rack-save">
+          <h2 class="rack-title">Save</h2>
+          <div class="rack-body">
+            <label class="export-checkbox-label">
+              <input type="checkbox" id="export-audio-only" class="export-checkbox" />
+              <span>Export audio only</span>
+            </label>
+            <div id="export-format-choice" class="export-format-choice" hidden>
+              <label class="export-radio-label"><input type="radio" name="export-format" value="mp3" checked /> MP3 (320 kbps)</label>
+              <label class="export-radio-label"><input type="radio" name="export-format" value="wav" /> WAV</label>
+            </div>
+            <button type="button" id="save-finished-btn" class="btn-accent save-finished-btn">Save Finished Product</button>
+            <div id="export-result" class="export-result" hidden>
+              <p class="export-result-path" id="export-result-path"></p>
+              <button type="button" id="open-in-finder-btn" class="open-in-finder-btn">Open in Finder</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="voice-tab" class="tab-panel" role="tabpanel" aria-labelledby="voice" hidden>
+      <div class="channel-rack">
+        <div class="rack-panel rack-voice-upload">
+          <h2 class="rack-title">Upload</h2>
+          <div class="rack-body">
+            <input type="file" id="voice-file-input" class="file-input" accept=".wav,.mp3,.m4a,.ogg,.mp4,.mov" aria-label="Choose voice recording" />
+            <button type="button" id="voice-upload-btn" class="btn-accent">Upload Voice Recording</button>
+            <div id="voice-loading-state" class="loading-state" hidden>
+              <div class="spinner" aria-hidden="true"></div>
+              <p class="loading-label">Loading voice…</p>
+            </div>
+          </div>
+        </div>
+        <div class="rack-panel rack-voice-analysis">
+          <h2 class="rack-title">Analysis</h2>
+          <div class="rack-body">
+            <div id="voice-loaded-state" class="loaded-state" hidden>
+              <p class="loaded-info" id="voice-loaded-info"></p>
+            </div>
+            <p id="voice-analysis-placeholder" class="rack-placeholder">Upload a voice recording to see info.</p>
+          </div>
+        </div>
+        <div class="rack-panel rack-voice-chat">
+          <h2 class="rack-title">Chat</h2>
+          <div class="rack-body">
+            <label for="voice-modify-input" class="rack-label">Describe change (pitch, formant, reverb, etc. — applies only to voice track)</label>
+            <textarea id="voice-modify-input" class="modify-input" rows="2" placeholder="e.g. raise pitch +2 semitones, add subtle reverb, darker formant" aria-label="Describe voice change"></textarea>
+            <div class="modify-actions">
+              <button type="button" id="voice-apply-btn" class="btn-accent">Apply</button>
+              <button type="button" id="voice-undo-btn" class="undo-modify-btn" hidden>Undo</button>
+            </div>
+          </div>
+        </div>
+        <div class="rack-panel rack-voice-versions">
+          <h2 class="rack-title">Versions</h2>
+          <div class="rack-body">
+            <label for="voice-versions-select" class="rack-label">Version</label>
+            <select id="voice-versions-select" class="voice-versions-select" aria-label="Voice version history">
+              <option value="original">Original</option>
+            </select>
+          </div>
+        </div>
+        <div class="rack-panel rack-voice-save">
+          <h2 class="rack-title">Save</h2>
+          <div class="rack-body">
+            <button type="button" id="voice-save-btn" class="btn-accent save-finished-btn">Save Voice</button>
+            <div id="voice-export-result" class="export-result" hidden>
+              <p class="export-result-path" id="voice-export-result-path"></p>
+              <button type="button" id="voice-open-in-finder-btn" class="open-in-finder-btn">Open in Finder</button>
+            </div>
+            <div class="voice-cache-section">
+              <label for="voice-cache-name" class="rack-label">Optional name for permanent cache</label>
+              <input type="text" id="voice-cache-name" class="voice-input" placeholder="e.g. my_voice_1" aria-label="Name for cached voice" />
+              <button type="button" id="voice-cache-forever-btn" class="btn-accent">Cache This Voice Forever</button>
+            </div>
+          </div>
+        </div>
+        <div class="rack-panel rack-voice-phrases">
+          <h2 class="rack-title">Voice Forging (Phrases)</h2>
+          <div class="rack-body">
+            <label for="voice-language" class="rack-label">Enter language (e.g., English, Spanish, Japanese, Russian, or any other)</label>
+            <input type="text" id="voice-language" class="voice-input" placeholder="e.g. English, Spanish, Japanese, Russian" aria-label="Language for phrases" />
+            <label for="voice-tone" class="rack-label voice-label-optional">Enter tone/style (e.g., normal, screamo, whisper, or leave blank for default)</label>
+            <input type="text" id="voice-tone" class="voice-input" placeholder="optional: normal, screamo, whisper" aria-label="Tone or style" />
+            <button type="button" id="voice-get-phrases-btn" class="btn-accent">Get Phrases</button>
+            <div id="voice-phrases-box" class="voice-phrases-box" hidden>
+              <label class="rack-label">Phonetically balanced sentences for this language</label>
+              <ol id="voice-phrases-list" class="voice-phrases-list" aria-label="Phrases to record"></ol>
+            </div>
+            <div id="voice-phrases-fallback" class="voice-phrases-fallback" hidden>
+              <p id="voice-phrases-fallback-message" class="voice-fallback-message"></p>
+              <p class="rack-label">Suggested English phrases (speak in your target language):</p>
+              <ol id="voice-phrases-fallback-list" class="voice-phrases-list"></ol>
+            </div>
+            <p class="voice-instructions">Record yourself clearly saying each phrase 2–3 times for best voice cloning results.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="customize-tab" class="tab-panel" role="tabpanel" aria-labelledby="customize" hidden>
+      <div class="channel-rack">
+        <div class="rack-panel rack-theme">
+          <h2 class="rack-title">Theme</h2>
+          <div class="rack-body">
+            <p class="rack-label">Choose a color theme. It applies to background, buttons, and text areas.</p>
+            <div id="theme-swatches" class="theme-swatches" role="group" aria-label="Color theme presets"></div>
+          </div>
+        </div>
+        <div class="rack-panel rack-cache">
+          <h2 class="rack-title">Manage Cache</h2>
+          <div class="rack-body">
+            <p id="cache-size-text" class="cache-size-text" aria-live="polite">Cache using —</p>
+            <div class="cache-actions">
+              <button type="button" id="cache-clear-all-btn" class="btn-accent">Clear All Cache</button>
+              <button type="button" id="cache-clear-old-btn" class="btn-secondary">Clear Old Versions Only</button>
+              <button type="button" id="cache-keep-originals-btn" class="btn-secondary">Keep Originals</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast toast--success" hidden role="status" aria-live="polite">
+    <span id="toast-message"></span>
+  </div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

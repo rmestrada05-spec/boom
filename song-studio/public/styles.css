@@ -1,0 +1,1146 @@
+/* Step 7: FL Studio aesthetic — dark theme #1E1E1E, accent #FF8000, channel-rack layout, 3 tabs */
+
+:root {
+  --bg: #1E1E1E;
+  --bg-panel: #252526;
+  --bg-input: #2D2D30;
+  --accent: #FF8000;
+  --accent-text: #000000;
+  --text: #E0E0E0;
+  --text-muted: #9D9D9D;
+  --border: #3C3C3C;
+  --font-size-base: 1.05rem;
+  --font-size-lg: 1.2rem;
+  --font-size-xl: 1.35rem;
+  --space: 1.25rem;
+  --space-lg: 1.75rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--font-size-base);
+  line-height: 1.45;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Step 17: Splash screen on launch (replace with real video player if desired) */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.splash--hidden {
+  display: none;
+}
+
+.splash__text {
+  margin: 0;
+  color: #fff;
+  font-size: 1.25rem;
+  text-align: center;
+  max-width: 28em;
+}
+
+/* Step 20: First Run Setup screen */
+.setup-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.setup-screen[hidden] {
+  display: none !important;
+}
+
+.setup-dialog {
+  background: var(--bg-panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: var(--space-lg);
+  max-width: 520px;
+  width: 100%;
+}
+
+.setup-title {
+  margin: 0 0 var(--space);
+  font-size: var(--font-size-xl);
+  color: var(--text);
+}
+
+.setup-status {
+  margin: 0 0 var(--space);
+  color: var(--text-muted);
+}
+
+.setup-commands {
+  margin: var(--space) 0;
+  text-align: left;
+}
+
+.setup-commands .rack-label {
+  margin-bottom: 0.5rem;
+}
+
+.setup-pre {
+  margin: 0 0 var(--space);
+  padding: var(--space);
+  background: #1a1a1a;
+  color: #e0e0e0;
+  border-radius: 6px;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+  font-size: 0.9rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.setup-ffmpeg {
+  margin-top: var(--space);
+}
+
+.setup-ffmpeg .setup-pre {
+  margin-bottom: 0.5rem;
+}
+
+.setup-ffmpeg-link {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.setup-ffmpeg-link a {
+  color: var(--accent);
+}
+
+.setup-all-ok {
+  margin: var(--space) 0;
+  color: var(--text);
+}
+
+.setup-actions {
+  display: flex;
+  gap: var(--space);
+  margin-top: var(--space-lg);
+}
+
+/* ========== Steps 21–23: Reliability & error UI (right after setup) ========== */
+/* Step 21: Operation error popup — red banner with expandable detail, Retry, Copy Error */
+.operation-error {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.operation-error[hidden] {
+  display: none !important;
+}
+
+.operation-error-dialog {
+  background: #2d1515;
+  border: 2px solid #b33;
+  border-radius: 12px;
+  padding: var(--space-lg);
+  max-width: 520px;
+  width: 100%;
+}
+
+.operation-error-message {
+  margin: 0 0 var(--space);
+  color: #f0c0c0;
+  font-size: var(--font-size-base);
+}
+
+.operation-error-toggle {
+  margin: 0 0 0.5rem;
+  padding: 0.25rem 0;
+  background: none;
+  border: none;
+  color: #e88;
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.operation-error-toggle:hover {
+  color: #faa;
+}
+
+.operation-error-detail {
+  margin: 0 0 var(--space);
+  padding: var(--space);
+  background: #1a0a0a;
+  color: #e0c0c0;
+  border-radius: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.operation-error-detail[hidden] {
+  display: none !important;
+}
+
+.operation-error-actions {
+  display: flex;
+  gap: var(--space);
+  margin-top: var(--space);
+}
+
+/* Step 22: Progress modal for long operations */
+.progress-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.progress-modal[hidden] {
+  display: none !important;
+}
+
+.progress-modal-dialog {
+  background: var(--bg-panel);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  padding: var(--space-lg);
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+}
+
+.progress-modal-title {
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-xl);
+  color: var(--text);
+}
+
+.progress-modal-message {
+  margin: 0 0 0.25rem;
+  color: var(--text-muted);
+}
+
+.progress-modal-subtext {
+  margin: 0 0 var(--space);
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.progress-modal-spinner {
+  margin: var(--space) 0;
+}
+
+.progress-modal-bar-wrap {
+  width: 100%;
+  max-width: 280px;
+  height: 8px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: var(--space) 0;
+}
+
+.progress-modal-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.progress-modal-pct {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+/* Step 23: Cache size warning (and Step 26 system requirements use .cache-size-warning) */
+.cache-size-warning {
+  margin: 0;
+  padding: var(--space);
+  background: var(--bg-panel);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+}
+
+.cache-size-warning-text {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+
+.cache-size-warning-link {
+  color: var(--accent);
+}
+
+/* ========== Steps 27–30: Polish & UX (tour, quit confirm) — with Step 8 ========== */
+/* Step 29: Quit confirmation when unsaved changes */
+.quit-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+.quit-confirm-overlay[hidden] {
+  display: none !important;
+}
+.quit-confirm-dialog {
+  background: var(--bg-panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: var(--space-lg);
+  max-width: 420px;
+  width: 100%;
+}
+.quit-confirm-title {
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-xl);
+  color: var(--text);
+}
+.quit-confirm-message {
+  margin: 0 0 var(--space-lg);
+  color: var(--text-muted);
+}
+.quit-confirm-actions {
+  display: flex;
+  gap: var(--space);
+  flex-wrap: wrap;
+}
+
+.app {
+  max-width: 920px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: var(--space-lg) var(--space-lg);
+  background: var(--bg-panel);
+  border-bottom: 3px solid var(--accent);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--space-lg);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: var(--space) var(--space-lg);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab--active {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-bottom-color: var(--accent-text);
+}
+
+.tab-panel {
+  display: none;
+  flex: 1;
+  padding: var(--space-lg);
+}
+
+.tab-panel--active {
+  display: block;
+}
+
+.tab-panel[hidden] {
+  display: none !important;
+}
+
+/* Channel-rack: vertical panels */
+.channel-rack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.rack-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rack-title {
+  margin: 0;
+  padding: var(--space) var(--space-lg);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+
+.rack-body {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.rack-label {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rack-placeholder {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--text-muted);
+}
+
+/* Accent buttons (FL orange) */
+.btn-accent {
+  display: inline-block;
+  padding: var(--space) var(--space-lg);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 2px solid rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.2s, transform 0.1s;
+}
+
+.btn-accent:hover {
+  filter: brightness(1.1);
+}
+
+.btn-accent:active {
+  transform: scale(0.98);
+}
+
+.btn-accent:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.btn-accent:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-block;
+  padding: var(--space) var(--space-lg);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.btn-secondary:hover {
+  filter: brightness(1.05);
+}
+
+/* Step 16: Project panel */
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+}
+
+.file-input--hidden {
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  z-index: -1;
+}
+
+/* Step 18: Session — loaded songs dropdown */
+.session-songs-select {
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space);
+  font-size: var(--font-size-base);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.file-input {
+  position: absolute;
+  width: 0.1px;
+  height: 0.1px;
+  opacity: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+
+/* Loading state */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space);
+}
+
+.loading-label {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Loaded state */
+.loaded-state {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space);
+}
+
+.loaded-state[hidden] {
+  display: none !important;
+}
+
+.loaded-info {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.analyzing-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.analyzing-state[hidden] {
+  display: none !important;
+}
+
+.analysis-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.analysis-panel[hidden] {
+  display: none !important;
+}
+
+.analysis-output {
+  width: 100%;
+  min-height: 240px;
+  padding: var(--space);
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+/* Chat / modify */
+.modify-input {
+  width: 100%;
+  padding: var(--space);
+  font-size: var(--font-size-base);
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+  min-height: 3rem;
+}
+
+.modify-input::placeholder {
+  color: var(--text-muted);
+}
+
+.modify-actions {
+  display: flex;
+  gap: var(--space);
+  flex-wrap: wrap;
+}
+
+.undo-modify-btn {
+  padding: 0.6rem var(--space);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.undo-modify-btn:hover {
+  background: var(--bg-input);
+}
+
+/* Versions */
+.diff-summary-list {
+  padding: 0;
+}
+
+.diff-summary-list[hidden] {
+  display: none !important;
+}
+
+.diff-summary-entries {
+  margin: 0;
+  padding-left: 1.5rem;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.diff-summary-entries li {
+  margin-bottom: 0.5rem;
+}
+
+/* Export / Save */
+.export-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.export-checkbox {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.export-format-choice {
+  display: flex;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.export-format-choice[hidden] {
+  display: none !important;
+}
+
+.export-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--font-size-base);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.save-finished-btn {
+  font-size: var(--font-size-xl);
+  padding: var(--space) var(--space-lg);
+}
+
+.export-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.export-result[hidden] {
+  display: none !important;
+}
+
+.export-result-path {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.open-in-finder-btn {
+  align-self: flex-start;
+  padding: 0.6rem var(--space);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.open-in-finder-btn:hover {
+  background: var(--border);
+}
+
+/* Error state */
+.error-state {
+  margin-top: 0;
+}
+
+.error-state[hidden] {
+  display: none !important;
+}
+
+.error-message {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: #fff;
+  background: #c00;
+  padding: var(--space);
+  border-radius: 6px;
+}
+
+.loading-state[hidden] {
+  display: none !important;
+}
+
+/* Error banner (Step 9: consistent for all upload/validation failures) */
+.error-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  padding: var(--space) var(--space-lg);
+  background: #c00;
+  color: #fff;
+  border-bottom: 2px solid #a00;
+}
+
+.error-banner[hidden] {
+  display: none !important;
+}
+
+.error-banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.error-banner-text {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.error-banner-detail {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 400;
+  opacity: 0.95;
+}
+
+.error-banner-detail[hidden] {
+  display: none !important;
+}
+
+.error-banner-retry {
+  padding: 0.6rem var(--space);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: #c00;
+  background: #fff;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.error-banner-retry:hover {
+  background: #f0f0f0;
+  color: #a00;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
+  padding: var(--space) var(--space-lg);
+  border-radius: 8px;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  background: #0a7a0a;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  animation: toast-in 0.3s ease-out;
+}
+
+.toast[hidden] {
+  display: none !important;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Step 8: Color customization — theme swatches */
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-lg);
+}
+
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.theme-swatch:hover {
+  border-color: var(--accent);
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.theme-swatch--active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.theme-swatch-patch {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px 6px 0 0;
+  min-height: 64px;
+}
+
+/* Step 13: Voice tab — phrases */
+.voice-input {
+  width: 100%;
+  padding: var(--space);
+  font-size: var(--font-size-base);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.voice-label-optional {
+  opacity: 0.9;
+}
+
+.voice-phrases-box,
+.voice-phrases-fallback {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.voice-phrases-box[hidden],
+.voice-phrases-fallback[hidden] {
+  display: none !important;
+}
+
+.voice-phrases-list {
+  margin: 0;
+  padding-left: 1.5rem;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.voice-phrases-list li {
+  margin-bottom: 0.5rem;
+}
+
+.voice-phrases-fallback .voice-fallback-message {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.voice-instructions {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Step 12: Voice tab — versions dropdown */
+.voice-versions-select {
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space);
+  font-size: var(--font-size-base);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Step 15: Permanent voice cache (Voice tab) */
+.voice-cache-section {
+  margin-top: var(--space);
+  padding-top: var(--space);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+/* Step 15: Add Cached Voice (Studio tab) */
+.cached-voice-section {
+  margin-top: var(--space);
+  padding-top: var(--space);
+  border-top: 1px solid var(--border);
+}
+
+.cached-voice-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.cached-voice-form[hidden] {
+  display: none !important;
+}
+
+/* Step 14: Layers */
+.layer-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.layer-form[hidden] {
+  display: none !important;
+}
+
+.layer-select {
+  width: 100%;
+  max-width: 320px;
+  padding: var(--space);
+  font-size: var(--font-size-base);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.layer-replace-times {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.layer-replace-times[hidden] {
+  display: none !important;
+}
+
+.layer-number {
+  width: 6rem;
+  padding: 0.5rem;
+  font-size: var(--font-size-base);
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Step 23: Manage Cache (Customize tab) */
+.cache-size-text {
+  margin: 0 0 var(--space);
+  font-size: var(--font-size-base);
+  color: var(--text);
+}
+
+.cache-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+}
+
+/* Step 23: Cache size warning banner on launch */
+.cache-size-warning {
+  padding: var(--space) var(--space-lg);
+  background: #2d2a15;
+  border-bottom: 2px solid #b8860b;
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+  flex-wrap: wrap;
+}
+
+.cache-size-warning[hidden] {
+  display: none !important;
+}
+
+.cache-size-warning-text {
+  margin: 0;
+  color: #e0d0a0;
+  font-size: var(--font-size-base);
+}
+
+.cache-size-warning-link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cache-size-warning-link:hover {
+  text-decoration: underline;
+}
+
+/* Step 27: Guided tour overlay (first launch) */
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9996;
+  pointer-events: none;
+}
+
+.tour-overlay[hidden] {
+  display: none !important;
+}
+
+.tour-overlay .tour-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.tour-card {
+  position: absolute;
+  max-width: 320px;
+  padding: var(--space-lg);
+  background: var(--bg-panel);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.tour-title {
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-xl);
+  color: var(--text);
+}
+
+.tour-message {
+  margin: 0 0 var(--space);
+  color: var(--text);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+.tour-link-wrap {
+  margin: 0 0 var(--space);
+}
+
+.tour-link-wrap[hidden] {
+  display: none !important;
+}
+
+.tour-link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tour-link:hover {
+  text-decoration: underline;
+}
+
+.tour-actions {
+  display: flex;
+  gap: var(--space);
+  flex-wrap: wrap;
+}
