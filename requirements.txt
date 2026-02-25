@@ -1,0 +1,12 @@
+streamlit
+librosa
+numpy
+pandas
+scipy
+soundfile
+altair
+audioread
+mido
+demucs
+torch
+torchaudio
