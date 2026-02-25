@@ -16,6 +16,7 @@ from song_analyzer.garageband_export import (
     build_garageband_blueprint_text,
     build_garageband_blueprint_tsv,
 )
+from song_analyzer.midi_quality import analyze_midi_quality, build_midi_quality_text_report
 
 
 SUPPORTED_TYPES = ["wav", "mp3", "m4a", "flac", "ogg", "aac"]
@@ -187,6 +188,88 @@ def main() -> None:
         value=blueprint_text,
         height=420,
     )
+
+    st.subheader("Post-Rip MIDI Analyzer (Quality Check)")
+    st.caption(
+        "Validate your MIDI against the original upload. This checks tempo, arrangement overlap, "
+        "timing, density, and MIDI formatting quality."
+    )
+    uploaded_midi_for_check = st.file_uploader(
+        "Optional: upload a MIDI exported from GarageBand for verification",
+        type=["mid", "midi"],
+        key="midi_quality_upload",
+    )
+    midi_under_test = midi_data
+    source_label = "Generated blueprint MIDI"
+    if uploaded_midi_for_check is not None:
+        midi_under_test = uploaded_midi_for_check.getvalue()
+        source_label = "Uploaded GarageBand MIDI"
+
+    quality_report = analyze_midi_quality(
+        midi_under_test,
+        reference_result=result,
+        expected_bpm=result["bpm"],
+    )
+    st.write(f"Analyzed source: **{source_label}**")
+
+    quality_col_1, quality_col_2, quality_col_3 = st.columns(3)
+    quality_col_1.metric("MIDI Match Score", f"{quality_report['overall_score']}")
+    quality_col_2.metric("Quality Grade", quality_report["grade"])
+    quality_col_3.metric("Tempo Match BPM", f"{quality_report['midi_bpm'] or 'N/A'}")
+
+    score_rows = [
+        {"Metric": "Arrangement", "Score": quality_report["scores"]["arrangement_score"]},
+        {"Metric": "Timing", "Score": quality_report["scores"]["timing_score"]},
+        {"Metric": "Density", "Score": quality_report["scores"]["density_score"]},
+        {"Metric": "Format", "Score": quality_report["scores"]["format_score"]},
+        {"Metric": "Tempo", "Score": quality_report["scores"]["tempo_score"]},
+        {"Metric": "Melodic Variety", "Score": quality_report["scores"]["melodic_score"]},
+    ]
+    st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
+
+    if quality_report["recommendations"]:
+        st.warning("Recommended improvements:")
+        for recommendation in quality_report["recommendations"]:
+            st.write(f"- {recommendation}")
+
+    element_comparison_df = pd.DataFrame(quality_report["element_comparison"])
+    if not element_comparison_df.empty:
+        st.caption("Per-element MIDI vs original comparison")
+        st.dataframe(
+            element_comparison_df.rename(
+                columns={
+                    "element": "Element",
+                    "reference_regions": "Reference Regions",
+                    "midi_regions": "MIDI Regions",
+                    "coverage": "Coverage",
+                    "precision": "Precision",
+                    "timing_score": "Timing Score",
+                    "density_score": "Density Score",
+                    "element_score": "Element Score",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+            height=320,
+        )
+
+    quality_report_json = json.dumps(quality_report, indent=2).encode("utf-8")
+    quality_report_text = build_midi_quality_text_report(quality_report).encode("utf-8")
+    quality_export_col_1, quality_export_col_2 = st.columns(2)
+    with quality_export_col_1:
+        st.download_button(
+            "Download MIDI Quality Report (.json)",
+            data=quality_report_json,
+            file_name="midi_quality_report.json",
+            mime="application/json",
+        )
+    with quality_export_col_2:
+        st.download_button(
+            "Download MIDI Quality Report (.txt)",
+            data=quality_report_text,
+            file_name="midi_quality_report.txt",
+            mime="text/plain",
+        )
 
     st.subheader("Export Results")
     csv_data = detections_df.to_csv(index=False).encode("utf-8")

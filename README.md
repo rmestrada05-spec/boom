@@ -9,6 +9,7 @@ Free Streamlit web app to:
 - Suggest likely effects used to recreate each detected layer (including vocal FX chains)
 - Export a **GarageBand-importable MIDI blueprint** for arrangement ripping/editing
 - Generate a **copy/paste GarageBand build sheet** with track-by-track timestamp instructions
+- Run a **post-rip MIDI analyzer** to score how close your MIDI is to the original structure
 
 ## What it does
 
@@ -20,6 +21,7 @@ The app analyzes the uploaded mix with spectral + rhythmic heuristics and genera
 - **GarageBand patch/effects suggestions** for every detection
 - **GarageBand MIDI blueprint** (editable regions/tracks after import)
 - **Copy/paste build sheet** + TSV track sheet for fast recreation workflow
+- **Post-rip MIDI quality report** (tempo/arrangement/timing/density/format checks)
 - **CSV/JSON export** of analysis data
 
 The detection model focuses on modern production building blocks used in styles like:
@@ -73,6 +75,7 @@ Streamlit Community Cloud will install `requirements.txt` automatically.
    - Timestamped detections
    - GarageBand sound + patch + FX recommendations
    - GarageBand MIDI blueprint + copy/paste build sheet
+   - Post-rip MIDI quality score and fix recommendations
 5. Export results as CSV or JSON.
 
 ## GarageBand import workflow (rip + edit)
@@ -86,12 +89,15 @@ Streamlit Community Cloud will install `requirements.txt` automatically.
    - FX chain suggestions
    - Timestamp region cues
 5. Replace blueprint MIDI sounds with your preferred GarageBand instruments and edit.
+6. Run the in-app **Post-Rip MIDI Analyzer** to verify closeness against the original upload.
+7. Optionally export your edited GarageBand MIDI and upload it back for re-check.
 
 ## Notes on accuracy
 
 - This is a **heuristic analysis engine** (not full stem separation).
 - Results are meant as a **production recreation assistant**, not a legal/forensic transcription.
 - Use your ears to refine patch/effect choices after loading the recommended GarageBand starting points.
+- MIDI quality checks validate structure/timing similarity; they cannot guarantee identical mastering or sound design.
 
 ## Project structure
 
@@ -100,5 +106,6 @@ app.py                         # Streamlit UI
 song_analyzer/analysis.py      # Audio feature extraction + element detection
 song_analyzer/garageband.py    # GarageBand patch/effects mapping
 song_analyzer/garageband_export.py  # GarageBand MIDI + copy/paste export helpers
+song_analyzer/midi_quality.py  # Post-rip MIDI comparison and quality scoring
 requirements.txt
 ```
