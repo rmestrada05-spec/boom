@@ -107,6 +107,101 @@ def _density_score(reference_count: int, midi_count: int) -> float:
     return float(max(0.0, 1.0 - (abs(np.log2(ratio)) / 2.0)))
 
 
+def _pitch_span(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    arr = np.asarray(values, dtype=float)
+    return float(np.percentile(arr, 90) - np.percentile(arr, 10))
+
+
+def _melodic_pitch_match_score(
+    element_key: str,
+    reference_items: list[dict[str, Any]],
+    midi_items: list[dict[str, Any]],
+) -> tuple[float, dict[str, Any] | None]:
+    if element_key not in MELODIC_KEYS:
+        return 1.0, None
+
+    reference_pitch_mid = [
+        float(item["pitch_midi"])
+        for item in reference_items
+        if item.get("pitch_midi") is not None
+    ]
+    reference_pitch_start = [
+        float(item["pitch_midi_start"])
+        for item in reference_items
+        if item.get("pitch_midi_start") is not None
+    ]
+    reference_pitch_end = [
+        float(item["pitch_midi_end"])
+        for item in reference_items
+        if item.get("pitch_midi_end") is not None
+    ]
+    reference_movements = [
+        abs(float(item["pitch_movement_delta"]))
+        for item in reference_items
+        if item.get("pitch_movement_delta") is not None
+    ]
+
+    midi_notes = [int(item["note"]) for item in midi_items]
+    if not reference_pitch_mid:
+        if not midi_notes:
+            return 1.0, None
+        # If no reference pitch data exists, avoid over-penalizing.
+        return 0.7, None
+    if not midi_notes:
+        detail = {
+            "element_key": element_key,
+            "reference_unique_notes": len(set(round(value) for value in reference_pitch_mid)),
+            "midi_unique_notes": 0,
+            "reference_pitch_span": round(_pitch_span(reference_pitch_mid), 3),
+            "midi_pitch_span": 0.0,
+            "movement_score": 0.0,
+            "variety_score": 0.0,
+            "melodic_element_score": 0.0,
+        }
+        return 0.0, detail
+
+    ref_unique = len(set(round(value) for value in reference_pitch_mid))
+    midi_unique = len(set(midi_notes))
+    variety_ratio = (midi_unique + 1.0) / (ref_unique + 1.0)
+    variety_score = max(0.0, 1.0 - (abs(np.log2(variety_ratio)) / 2.0))
+
+    ref_span = _pitch_span(reference_pitch_mid)
+    midi_span = _pitch_span([float(note) for note in midi_notes])
+    span_score = max(0.0, 1.0 - (abs(midi_span - ref_span) / max(2.0, ref_span)))
+
+    if reference_pitch_start and reference_pitch_end:
+        ref_direction = float(np.median(np.asarray(reference_pitch_end) - np.asarray(reference_pitch_start)))
+    else:
+        ref_direction = 0.0
+    if reference_movements:
+        ref_motion_mag = float(np.median(reference_movements))
+    else:
+        ref_motion_mag = abs(ref_direction)
+
+    midi_arr = np.asarray(midi_notes, dtype=float)
+    midi_direction = float(np.median(np.diff(midi_arr))) if midi_arr.size > 1 else 0.0
+    midi_motion_mag = float(np.percentile(np.abs(np.diff(midi_arr)), 75)) if midi_arr.size > 1 else 0.0
+
+    direction_score = max(0.0, 1.0 - (abs(midi_direction - ref_direction) / 4.0))
+    motion_mag_score = max(0.0, 1.0 - (abs(midi_motion_mag - ref_motion_mag) / max(2.0, ref_motion_mag + 1.0)))
+    movement_score = (0.6 * direction_score) + (0.4 * motion_mag_score)
+
+    melodic_score = (0.35 * variety_score) + (0.35 * span_score) + (0.30 * movement_score)
+    detail = {
+        "element_key": element_key,
+        "reference_unique_notes": int(ref_unique),
+        "midi_unique_notes": int(midi_unique),
+        "reference_pitch_span": round(ref_span, 3),
+        "midi_pitch_span": round(midi_span, 3),
+        "movement_score": round(movement_score, 3),
+        "variety_score": round(variety_score, 3),
+        "melodic_element_score": round(melodic_score, 3),
+    }
+    return float(melodic_score), detail
+
+
 def _infer_element_key(
     track_name: str,
     note_values: list[int],
@@ -306,21 +401,30 @@ def analyze_midi_quality(
         tempo_diff_ratio = abs(midi_tempo_bpm - reference_bpm) / max(reference_bpm, 1e-9)
         tempo_score = max(0.0, 1.0 - (tempo_diff_ratio / 0.12))
 
-    melodic_rows = [row for row in element_rows if row["element_key"] in MELODIC_KEYS and row["midi_regions"] > 0]
-    melodic_note_scores = []
-    for row in melodic_rows:
-        key = row["element_key"]
-        notes = [
-            int(item["note"])
-            for item in midi_by_key.get(key, [])
-        ]
-        unique_notes = len(set(notes))
-        note_score = min(1.0, unique_notes / 4.0)
-        melodic_note_scores.append(note_score)
-    if melodic_rows:
-        melodic_score = float(np.mean(melodic_note_scores))
+    melodic_scores: list[float] = []
+    melodic_weights: list[float] = []
+    melodic_details: list[dict[str, Any]] = []
+    for element_key in sorted(MELODIC_KEYS):
+        reference_items = reference_by_key.get(element_key, [])
+        midi_items = midi_by_key.get(element_key, [])
+        if not reference_items and not midi_items:
+            continue
+        score, detail = _melodic_pitch_match_score(
+            element_key=element_key,
+            reference_items=reference_items,
+            midi_items=midi_items,
+        )
+        weight = max(1.0, float(len(reference_items)))
+        melodic_scores.append(score * weight)
+        melodic_weights.append(weight)
+        if detail:
+            detail["element"] = reference_items[0]["element"] if reference_items else element_key
+            melodic_details.append(detail)
+
+    if melodic_scores and melodic_weights:
+        melodic_score = float(sum(melodic_scores) / sum(melodic_weights))
     else:
-        melodic_score = 0.45
+        melodic_score = 0.7
 
     format_checks = [
         {
@@ -387,10 +491,23 @@ def analyze_midi_quality(
         recommendations.append(
             "MIDI event density is off. Increase/decrease note count per section to mirror the original energy."
         )
+    weak_melodic_details = sorted(melodic_details, key=lambda row: row["melodic_element_score"])[:3]
     if melodic_score < 0.60:
-        recommendations.append(
-            "Melodic note variety is too static. Add pitch movement/chord changes to better match the original contour."
-        )
+        if weak_melodic_details:
+            focus_chunks = []
+            for detail in weak_melodic_details:
+                focus_chunks.append(
+                    f"{detail['element']} (variety {detail['variety_score']:.2f}, movement {detail['movement_score']:.2f})"
+                )
+            recommendations.append(
+                "Melodic contour mismatch: adjust note changes and phrase movement for "
+                + "; ".join(focus_chunks)
+                + "."
+            )
+        else:
+            recommendations.append(
+                "Melodic contour mismatch detected. Add pitch movement/chord changes to align with source phrasing."
+            )
     failing_checks = [check for check in format_checks if not check["passed"]]
     if failing_checks:
         recommendations.append(
@@ -412,7 +529,7 @@ def analyze_midi_quality(
 
     summary = (
         "This post-rip checker compares MIDI structure to the original audio analysis. "
-        "It validates tempo, arrangement overlap, timing alignment, density, and formatting quality."
+        "It validates tempo, arrangement overlap, timing alignment, density, melodic contour, and formatting quality."
     )
     return {
         "overall_score": round(overall_score, 3),
@@ -436,6 +553,7 @@ def analyze_midi_quality(
         },
         "format_checks": format_checks,
         "element_comparison": element_rows,
+        "melodic_comparison": melodic_details,
         "recommendations": recommendations,
     }
 
@@ -473,4 +591,15 @@ def build_midi_quality_text_report(report: dict[str, Any]) -> str:
             f"coverage={row['coverage']:.3f} precision={row['precision']:.3f} "
             f"timing={row['timing_score']:.3f} density={row['density_score']:.3f}"
         )
+    melodic_rows = report.get("melodic_comparison", [])
+    if melodic_rows:
+        lines.append("")
+        lines.append("Melodic contour comparison:")
+        for row in melodic_rows:
+            lines.append(
+                "- "
+                f"{row['element']} | melodic_score={row['melodic_element_score']:.3f} "
+                f"ref_unique={row['reference_unique_notes']} midi_unique={row['midi_unique_notes']} "
+                f"ref_span={row['reference_pitch_span']:.2f} midi_span={row['midi_pitch_span']:.2f}"
+            )
     return "\n".join(lines)

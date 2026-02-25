@@ -12,6 +12,21 @@ from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo
 DEFAULT_BPM = 140.0
 DEFAULT_TICKS_PER_BEAT = 480
 MIN_NOTE_TICKS = 60
+MELODIC_CONTOUR_KEYS = {
+    "lead_synth_melody",
+    "chords_pads",
+    "counter_melody",
+    "synth_brass_stabs",
+    "main_vocals",
+    "adlibs",
+    "vocal_chops",
+    "vocal_fx_processing",
+    "atmospheres_textures",
+    "growls_screeches",
+    "plucks",
+    "supersaw",
+    "vocal_one_shots",
+}
 
 
 ELEMENT_MIDI_NOTE: dict[str, int] = {
@@ -62,6 +77,48 @@ def _seconds_to_ticks(seconds: float, bpm: float, ticks_per_beat: int = DEFAULT_
     return int(round(max(seconds, 0.0) * ticks_per_second))
 
 
+def _safe_midi_note(value: Any, fallback: int) -> int:
+    try:
+        note = int(round(float(value)))
+    except (TypeError, ValueError):
+        note = int(fallback)
+    return max(24, min(108, note))
+
+
+def _append_note_region(
+    track: MidiTrack,
+    channel: int,
+    note: int,
+    velocity: int,
+    start_tick: int,
+    end_tick: int,
+    current_tick: int,
+) -> int:
+    if start_tick < current_tick:
+        start_tick = current_tick
+    if end_tick <= start_tick:
+        end_tick = start_tick + MIN_NOTE_TICKS
+    track.append(
+        Message(
+            "note_on",
+            note=note,
+            velocity=velocity,
+            channel=channel,
+            time=start_tick - current_tick,
+        )
+    )
+    track.append(
+        Message(
+            "note_off",
+            note=note,
+            velocity=0,
+            channel=channel,
+            time=end_tick - start_tick,
+        )
+    )
+    return end_tick
+
+
 def build_garageband_blueprint_midi(
     detections: list[dict[str, Any]],
     bpm: float,
@@ -90,7 +147,7 @@ def build_garageband_blueprint_midi(
         track.append(MetaMessage("track_name", name=track_name[:127], time=0))
 
         channel = track_index % 16
-        note = ELEMENT_MIDI_NOTE.get(element_key, 60)
+        default_note = ELEMENT_MIDI_NOTE.get(element_key, 60)
         current_tick = 0
 
         for detection in element_detections:
@@ -101,26 +158,44 @@ def build_garageband_blueprint_midi(
             if end_tick <= start_tick:
                 end_tick = start_tick + MIN_NOTE_TICKS
             velocity = int(max(32, min(127, round(float(detection["confidence"]) * 100))))
+            primary_note = _safe_midi_note(detection.get("pitch_midi"), default_note)
 
-            track.append(
-                Message(
-                    "note_on",
-                    note=note,
-                    velocity=velocity,
-                    channel=channel,
-                    time=start_tick - current_tick,
-                )
+            if element_key in MELODIC_CONTOUR_KEYS:
+                start_note = _safe_midi_note(detection.get("pitch_midi_start"), primary_note)
+                end_note = _safe_midi_note(detection.get("pitch_midi_end"), primary_note)
+                duration_ticks = end_tick - start_tick
+                has_note_motion = abs(end_note - start_note) >= 1
+                if has_note_motion and duration_ticks >= (MIN_NOTE_TICKS * 2):
+                    mid_tick = start_tick + (duration_ticks // 2)
+                    current_tick = _append_note_region(
+                        track=track,
+                        channel=channel,
+                        note=start_note,
+                        velocity=velocity,
+                        start_tick=start_tick,
+                        end_tick=mid_tick,
+                        current_tick=current_tick,
+                    )
+                    current_tick = _append_note_region(
+                        track=track,
+                        channel=channel,
+                        note=end_note,
+                        velocity=velocity,
+                        start_tick=mid_tick,
+                        end_tick=end_tick,
+                        current_tick=current_tick,
+                    )
+                    continue
+
+            current_tick = _append_note_region(
+                track=track,
+                channel=channel,
+                note=primary_note,
+                velocity=velocity,
+                start_tick=start_tick,
+                end_tick=end_tick,
+                current_tick=current_tick,
             )
-            track.append(
-                Message(
-                    "note_off",
-                    note=note,
-                    velocity=0,
-                    channel=channel,
-                    time=end_tick - start_tick,
-                )
-            )
-            current_tick = end_tick
 
         track.append(MetaMessage("end_of_track", time=1))
         midi.tracks.append(track)
@@ -169,10 +244,16 @@ def build_garageband_blueprint_text(result: dict[str, Any], max_regions_per_elem
         lines.append("Regions:")
 
         for detection in element_detections[:max_regions_per_element]:
+            pitch_hint = ""
+            if detection.get("pitch_midi") is not None:
+                pitch_hint = (
+                    f" | pitch {detection.get('pitch_midi')} "
+                    f"({detection.get('pitch_movement', 'flat')})"
+                )
             lines.append(
                 "  - "
                 f"{detection['start_timestamp']} -> {detection['end_timestamp']} "
-                f"(conf {detection['confidence']:.2f})"
+                f"(conf {detection['confidence']:.2f}{pitch_hint})"
             )
 
         remaining = len(element_detections) - max_regions_per_element
@@ -189,6 +270,10 @@ def build_garageband_blueprint_tsv(detections: list[dict[str, Any]]) -> str:
         "start_timestamp",
         "end_timestamp",
         "confidence",
+        "pitch_midi",
+        "pitch_midi_start",
+        "pitch_midi_end",
+        "pitch_movement",
         "garageband_patch",
         "garageband_similar_sound",
         "suggested_effects",
@@ -203,6 +288,10 @@ def build_garageband_blueprint_tsv(detections: list[dict[str, Any]]) -> str:
                     str(detection["start_timestamp"]),
                     str(detection["end_timestamp"]),
                     f"{float(detection['confidence']):.3f}",
+                    str(detection.get("pitch_midi", "")),
+                    str(detection.get("pitch_midi_start", "")),
+                    str(detection.get("pitch_midi_end", "")),
+                    str(detection.get("pitch_movement", "")),
                     str(detection["garageband_patch"]).replace("\t", " "),
                     str(detection["garageband_similar_sound"]).replace("\t", " "),
                     " | ".join(detection["suggested_effects"]).replace("\t", " "),

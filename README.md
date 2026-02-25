@@ -11,6 +11,7 @@ Free Streamlit web app to:
 - Generate a **copy/paste GarageBand build sheet** with track-by-track timestamp instructions
 - Run a **post-rip MIDI analyzer** to score how close your MIDI is to the original structure
 - Run an **AI stem-separated analysis mode (Demucs)** before timestamping layers
+- Extract **melodic pitch contour metadata** and use it to drive MIDI note movement
 
 ## What it does
 
@@ -24,6 +25,7 @@ The app analyzes the uploaded mix with spectral + rhythmic heuristics and genera
 - **Copy/paste build sheet** + TSV track sheet for fast recreation workflow
 - **Post-rip MIDI quality report** (tempo/arrangement/timing/density/format checks)
 - **AI stem-separated source routing** (drums/bass/vocals/other for cleaner detection)
+- **Melodic contour comparison** (reference pitch span/movement vs MIDI)
 - **CSV/JSON export** of analysis data
 
 The detection model focuses on modern production building blocks used in styles like:

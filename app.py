@@ -47,6 +47,10 @@ def _detections_to_dataframe(detections: list[dict]) -> pd.DataFrame:
                 "End (s)": detection["end_seconds"],
                 "Confidence": detection["confidence"],
                 "Source": detection.get("analysis_source", "mix"),
+                "Pitch (MIDI)": detection.get("pitch_midi"),
+                "Pitch Start": detection.get("pitch_midi_start"),
+                "Pitch End": detection.get("pitch_midi_end"),
+                "Pitch Movement": detection.get("pitch_movement"),
                 "GarageBand Similar Sound": detection["garageband_similar_sound"],
                 "GarageBand Patch": detection["garageband_patch"],
                 "Suggested Effects": " | ".join(detection["suggested_effects"]),
@@ -263,7 +267,7 @@ def main() -> None:
         {"Metric": "Density", "Score": quality_report["scores"]["density_score"]},
         {"Metric": "Format", "Score": quality_report["scores"]["format_score"]},
         {"Metric": "Tempo", "Score": quality_report["scores"]["tempo_score"]},
-        {"Metric": "Melodic Variety", "Score": quality_report["scores"]["melodic_score"]},
+        {"Metric": "Melodic Contour", "Score": quality_report["scores"]["melodic_score"]},
     ]
     st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
 
@@ -291,6 +295,26 @@ def main() -> None:
             use_container_width=True,
             hide_index=True,
             height=320,
+        )
+    melodic_comparison_df = pd.DataFrame(quality_report.get("melodic_comparison", []))
+    if not melodic_comparison_df.empty:
+        st.caption("Melodic contour comparison (reference pitch movement vs MIDI)")
+        st.dataframe(
+            melodic_comparison_df.rename(
+                columns={
+                    "element": "Element",
+                    "reference_unique_notes": "Ref Unique Notes",
+                    "midi_unique_notes": "MIDI Unique Notes",
+                    "reference_pitch_span": "Ref Span",
+                    "midi_pitch_span": "MIDI Span",
+                    "movement_score": "Movement Score",
+                    "variety_score": "Variety Score",
+                    "melodic_element_score": "Melodic Score",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+            height=240,
         )
 
     quality_report_json = json.dumps(quality_report, indent=2).encode("utf-8")

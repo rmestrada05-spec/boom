@@ -15,6 +15,21 @@ TARGET_SAMPLE_RATE = 22_050
 N_FFT = 2_048
 HOP_LENGTH = 512
 MAX_ANALYSIS_SECONDS = 8 * 60
+MELODIC_PITCH_KEYS = {
+    "lead_synth_melody",
+    "chords_pads",
+    "counter_melody",
+    "synth_brass_stabs",
+    "main_vocals",
+    "adlibs",
+    "vocal_chops",
+    "vocal_fx_processing",
+    "atmospheres_textures",
+    "growls_screeches",
+    "plucks",
+    "supersaw",
+    "vocal_one_shots",
+}
 
 
 ELEMENT_SPECS: dict[str, dict[str, Any]] = {
@@ -375,6 +390,82 @@ def _format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{remainder:05.2f}"
 
 
+def _extract_pitch_contour(y: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray]:
+    """Estimate frame-level pitch contour in MIDI numbers."""
+    try:
+        f0_hz, _, _ = librosa.pyin(
+            y,
+            fmin=librosa.note_to_hz("C2"),
+            fmax=librosa.note_to_hz("C7"),
+            frame_length=N_FFT,
+            hop_length=HOP_LENGTH,
+            sr=sr,
+        )
+    except Exception:  # noqa: BLE001
+        return np.array([], dtype=float), np.array([], dtype=float)
+
+    if f0_hz is None or len(f0_hz) == 0:
+        return np.array([], dtype=float), np.array([], dtype=float)
+
+    pitch_times = librosa.frames_to_time(np.arange(len(f0_hz)), sr=sr, hop_length=HOP_LENGTH)
+    pitch_midi = np.full(len(f0_hz), np.nan, dtype=float)
+    valid_mask = np.isfinite(f0_hz)
+    if np.any(valid_mask):
+        pitch_midi[valid_mask] = librosa.hz_to_midi(f0_hz[valid_mask])
+    return pitch_times, pitch_midi
+
+
+def _pitch_movement_label(delta_semitones: float) -> str:
+    if delta_semitones >= 0.75:
+        return "up"
+    if delta_semitones <= -0.75:
+        return "down"
+    return "flat"
+
+
+def _segment_pitch_payload(
+    start_seconds: float,
+    end_seconds: float,
+    pitch_times: np.ndarray,
+    pitch_midi: np.ndarray,
+) -> dict[str, Any] | None:
+    if pitch_times.size == 0 or pitch_midi.size == 0:
+        return None
+
+    left_idx = int(np.searchsorted(pitch_times, start_seconds, side="left"))
+    right_idx = int(np.searchsorted(pitch_times, end_seconds, side="right"))
+    if right_idx <= left_idx:
+        return None
+
+    segment_notes = pitch_midi[left_idx:right_idx]
+    finite = segment_notes[np.isfinite(segment_notes)]
+    if finite.size < 3:
+        return None
+
+    midpoint = max(1, finite.size // 2)
+    first_half = finite[:midpoint]
+    second_half = finite[midpoint:]
+    if second_half.size == 0:
+        second_half = first_half
+
+    pitch_start = float(np.median(first_half))
+    pitch_end = float(np.median(second_half))
+    pitch_mid = float(np.median(finite))
+    pitch_var = float(np.percentile(finite, 90) - np.percentile(finite, 10))
+    movement_delta = pitch_end - pitch_start
+    pitch_class = int(round(pitch_mid)) % 12
+
+    return {
+        "pitch_midi": round(pitch_mid, 2),
+        "pitch_midi_start": round(pitch_start, 2),
+        "pitch_midi_end": round(pitch_end, 2),
+        "pitch_variation_semitones": round(pitch_var, 2),
+        "pitch_movement_delta": round(movement_delta, 2),
+        "pitch_movement": _pitch_movement_label(movement_delta),
+        "pitch_class": pitch_class,
+    }
+
+
 def _extract_segments(
     score: np.ndarray,
     times: np.ndarray,
@@ -690,6 +781,7 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
         raise ValueError("Audio is too short. Upload at least 2 seconds.")
 
     duration_seconds = float(librosa.get_duration(y=y, sr=sr))
+    pitch_times, pitch_midi = _extract_pitch_contour(y, sr)
 
     magnitude = np.abs(librosa.stft(y, n_fft=N_FFT, hop_length=HOP_LENGTH))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=N_FFT)
@@ -809,21 +901,29 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
 
         preset = get_preset_for_element(element_key)
         for segment in segments:
-            detections.append(
-                {
-                    "element_key": element_key,
-                    "element": spec["label"],
-                    "start_seconds": round(segment.start, 3),
-                    "end_seconds": round(segment.end, 3),
-                    "start_timestamp": _format_timestamp(segment.start),
-                    "end_timestamp": _format_timestamp(segment.end),
-                    "confidence": round(segment.confidence, 3),
-                    "garageband_similar_sound": preset.similar_sound,
-                    "garageband_patch": preset.patch,
-                    "suggested_effects": list(preset.effects),
-                    "recreation_notes": preset.recreation_notes,
-                }
-            )
+            row: dict[str, Any] = {
+                "element_key": element_key,
+                "element": spec["label"],
+                "start_seconds": round(segment.start, 3),
+                "end_seconds": round(segment.end, 3),
+                "start_timestamp": _format_timestamp(segment.start),
+                "end_timestamp": _format_timestamp(segment.end),
+                "confidence": round(segment.confidence, 3),
+                "garageband_similar_sound": preset.similar_sound,
+                "garageband_patch": preset.patch,
+                "suggested_effects": list(preset.effects),
+                "recreation_notes": preset.recreation_notes,
+            }
+            if element_key in MELODIC_PITCH_KEYS:
+                pitch_payload = _segment_pitch_payload(
+                    start_seconds=segment.start,
+                    end_seconds=segment.end,
+                    pitch_times=pitch_times,
+                    pitch_midi=pitch_midi,
+                )
+                if pitch_payload:
+                    row.update(pitch_payload)
+            detections.append(row)
 
     detections.sort(key=lambda detection: (detection["start_seconds"], -detection["confidence"]))
 
@@ -831,8 +931,8 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
     avg_confidence = float(np.mean([d["confidence"] for d in detections])) if detections else 0.0
 
     notes = [
-        "This engine is heuristic and best used as a production reference, not exact stem separation.",
-        "Use your ear to fine-tune GarageBand patch/effect choices after initial recreation.",
+        "Pitch contour metadata is attached to melodic detections for better MIDI movement.",
+        "Use AI stem-separated mode in the app for best isolation quality.",
     ]
     return {
         "bpm": bpm,
@@ -840,6 +940,7 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
         "analyzed_seconds": round(min(duration_seconds, MAX_ANALYSIS_SECONDS), 2),
         "subgenre_profile": subgenre_profile,
         "overall_detection_confidence": round(avg_confidence, 3),
+        "pitch_frames_analyzed": int(np.sum(np.isfinite(pitch_midi))) if pitch_midi.size else 0,
         "detections": detections,
         "notes": notes,
     }
