@@ -76,14 +76,17 @@ Streamlit Community Cloud will install `requirements.txt` automatically.
 3. Select analysis mode:
    - `AI Stem-Separated (Demucs)` for highest-quality separation workflow
    - `Fast Mix Heuristic` for quicker fallback mode
-4. Click **Analyze Song**.
-4. Review:
+4. Select pitch accuracy mode:
+   - `Maximum Precision (consensus-only)` to skip uncertain melodic guesses
+   - `Balanced` to keep broader pitch coverage
+5. Click **Analyze Song**.
+6. Review:
    - BPM
    - Timestamped detections
    - GarageBand sound + patch + FX recommendations
    - GarageBand MIDI blueprint + copy/paste build sheet
    - Post-rip MIDI quality score and fix recommendations
-5. Export results as CSV or JSON.
+7. Export results as CSV or JSON.
 
 ## GarageBand import workflow (rip + edit)
 
@@ -103,8 +106,9 @@ Streamlit Community Cloud will install `requirements.txt` automatically.
 
 - In `AI Stem-Separated (Demucs)` mode, separation quality is model-driven and substantially closer to true stems.
 - In `Fast Mix Heuristic` mode, detections are estimated directly from the mixed audio.
+- In `Maximum Precision` pitch mode, melodic MIDI notes are only emitted when multi-detector pitch consensus is strong.
 - Results are meant as a **production recreation assistant**, not a legal/forensic transcription.
-- Use your ears to refine patch/effect choices after loading the recommended GarageBand starting points.
+- Unresolved melodic regions are intentionally left unpitched to avoid low-confidence note guesses.
 - MIDI quality checks validate structure/timing similarity; they cannot guarantee identical mastering or sound design.
 
 ## About "exact" stem separation

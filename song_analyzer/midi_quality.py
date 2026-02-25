@@ -126,21 +126,25 @@ def _melodic_pitch_match_score(
         float(item["pitch_midi"])
         for item in reference_items
         if item.get("pitch_midi") is not None
+        and bool(item.get("pitch_resolved", item.get("pitch_midi") is not None))
     ]
     reference_pitch_start = [
         float(item["pitch_midi_start"])
         for item in reference_items
         if item.get("pitch_midi_start") is not None
+        and bool(item.get("pitch_resolved", item.get("pitch_midi_start") is not None))
     ]
     reference_pitch_end = [
         float(item["pitch_midi_end"])
         for item in reference_items
         if item.get("pitch_midi_end") is not None
+        and bool(item.get("pitch_resolved", item.get("pitch_midi_end") is not None))
     ]
     reference_movements = [
         abs(float(item["pitch_movement_delta"]))
         for item in reference_items
         if item.get("pitch_movement_delta") is not None
+        and bool(item.get("pitch_resolved", item.get("pitch_movement_delta") is not None))
     ]
 
     midi_notes = [int(item["note"]) for item in midi_items]
@@ -321,6 +325,13 @@ def analyze_midi_quality(
     reference_by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for detection in detections:
         reference_by_key[str(detection["element_key"])].append(detection)
+    reference_melodic_total = sum(1 for item in detections if item.get("element_key") in MELODIC_KEYS)
+    reference_melodic_resolved = sum(
+        1
+        for item in detections
+        if item.get("element_key") in MELODIC_KEYS
+        and bool(item.get("pitch_resolved", item.get("pitch_midi") is not None))
+    )
 
     midi_by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for track in midi_info["tracks"]:
@@ -425,6 +436,11 @@ def analyze_midi_quality(
         melodic_score = float(sum(melodic_scores) / sum(melodic_weights))
     else:
         melodic_score = 0.7
+    reference_pitch_coverage = (
+        float(reference_melodic_resolved / reference_melodic_total)
+        if reference_melodic_total
+        else 1.0
+    )
 
     format_checks = [
         {
@@ -508,6 +524,11 @@ def analyze_midi_quality(
             recommendations.append(
                 "Melodic contour mismatch detected. Add pitch movement/chord changes to align with source phrasing."
             )
+    if reference_pitch_coverage < 0.45:
+        recommendations.append(
+            "Reference pitch certainty is low in many melodic regions. "
+            "Enable Maximum Precision mode and/or provide cleaner audio for stricter pitch extraction."
+        )
     failing_checks = [check for check in format_checks if not check["passed"]]
     if failing_checks:
         recommendations.append(
@@ -550,6 +571,7 @@ def analyze_midi_quality(
             "total_note_count": int(midi_info["total_note_count"]),
             "mapped_note_ratio": round(float(midi_info["mapped_ratio"]), 3),
             "malformed_note_count": int(midi_info["malformed_note_count"]),
+            "reference_pitch_coverage": round(reference_pitch_coverage, 3),
         },
         "format_checks": format_checks,
         "element_comparison": element_rows,
@@ -566,6 +588,10 @@ def build_midi_quality_text_report(report: dict[str, Any]) -> str:
     lines.append(f"Overall score: {report['overall_score']:.3f} ({report['grade']})")
     lines.append(f"Reference BPM: {report['reference_bpm']}")
     lines.append(f"MIDI BPM: {report['midi_bpm'] if report['midi_bpm'] is not None else 'Not found'}")
+    lines.append(
+        "Reference melodic pitch coverage: "
+        f"{report.get('midi_meta', {}).get('reference_pitch_coverage', 'N/A')}"
+    )
     lines.append("")
     lines.append("Subscores:")
     for score_key, value in report["scores"].items():

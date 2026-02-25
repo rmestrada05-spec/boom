@@ -30,6 +30,20 @@ MELODIC_PITCH_KEYS = {
     "supersaw",
     "vocal_one_shots",
 }
+PITCH_MODE_BALANCED = "balanced"
+PITCH_MODE_MAX_PRECISION = "max_precision"
+PITCH_MODE_CONFIG: dict[str, dict[str, float]] = {
+    PITCH_MODE_BALANCED: {
+        "min_segment_confidence": 0.52,
+        "min_voiced_frames": 3,
+        "min_avg_support": 1.2,
+    },
+    PITCH_MODE_MAX_PRECISION: {
+        "min_segment_confidence": 0.78,
+        "min_voiced_frames": 5,
+        "min_avg_support": 1.8,
+    },
+}
 
 
 ELEMENT_SPECS: dict[str, dict[str, Any]] = {
@@ -390,29 +404,154 @@ def _format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{remainder:05.2f}"
 
 
-def _extract_pitch_contour(y: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray]:
-    """Estimate frame-level pitch contour in MIDI numbers."""
+def _safe_hz_to_midi(hz_values: np.ndarray) -> np.ndarray:
+    midi = np.full(len(hz_values), np.nan, dtype=float)
+    valid = np.isfinite(hz_values) & (hz_values > 0)
+    if np.any(valid):
+        midi[valid] = librosa.hz_to_midi(hz_values[valid])
+    return midi
+
+
+def _extract_pitch_contour(y: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Estimate frame-level pitch contour using consensus from multiple detectors."""
+    fmin = librosa.note_to_hz("C2")
+    fmax = librosa.note_to_hz("C7")
+
+    pyin_hz = None
     try:
-        f0_hz, _, _ = librosa.pyin(
+        pyin_hz, _, _ = librosa.pyin(
             y,
-            fmin=librosa.note_to_hz("C2"),
-            fmax=librosa.note_to_hz("C7"),
+            fmin=fmin,
+            fmax=fmax,
             frame_length=N_FFT,
             hop_length=HOP_LENGTH,
             sr=sr,
         )
     except Exception:  # noqa: BLE001
-        return np.array([], dtype=float), np.array([], dtype=float)
+        pyin_hz = None
 
-    if f0_hz is None or len(f0_hz) == 0:
-        return np.array([], dtype=float), np.array([], dtype=float)
+    try:
+        yin_hz = librosa.yin(
+            y,
+            fmin=fmin,
+            fmax=fmax,
+            sr=sr,
+            frame_length=N_FFT,
+            hop_length=HOP_LENGTH,
+        )
+    except Exception:  # noqa: BLE001
+        yin_hz = np.array([], dtype=float)
 
-    pitch_times = librosa.frames_to_time(np.arange(len(f0_hz)), sr=sr, hop_length=HOP_LENGTH)
-    pitch_midi = np.full(len(f0_hz), np.nan, dtype=float)
-    valid_mask = np.isfinite(f0_hz)
-    if np.any(valid_mask):
-        pitch_midi[valid_mask] = librosa.hz_to_midi(f0_hz[valid_mask])
-    return pitch_times, pitch_midi
+    try:
+        pitches, magnitudes = librosa.piptrack(
+            y=y,
+            sr=sr,
+            n_fft=N_FFT,
+            hop_length=HOP_LENGTH,
+            fmin=fmin,
+            fmax=fmax,
+        )
+        if pitches.size > 0 and magnitudes.size > 0:
+            best_indices = np.argmax(magnitudes, axis=0)
+            frame_indices = np.arange(magnitudes.shape[1])
+            piptrack_hz = pitches[best_indices, frame_indices]
+            piptrack_strength = magnitudes[best_indices, frame_indices]
+            max_strength = float(np.max(piptrack_strength)) if piptrack_strength.size else 0.0
+            if max_strength > 0:
+                piptrack_quality = np.clip(piptrack_strength / max_strength, 0.0, 1.0)
+            else:
+                piptrack_quality = np.zeros_like(piptrack_strength)
+        else:
+            piptrack_hz = np.array([], dtype=float)
+            piptrack_quality = np.array([], dtype=float)
+    except Exception:  # noqa: BLE001
+        piptrack_hz = np.array([], dtype=float)
+        piptrack_quality = np.array([], dtype=float)
+
+    candidates: list[tuple[str, np.ndarray, np.ndarray]] = []
+    if pyin_hz is not None and len(pyin_hz) > 0:
+        pyin_midi = _safe_hz_to_midi(np.asarray(pyin_hz, dtype=float))
+        candidates.append(("pyin", pyin_midi, np.where(np.isfinite(pyin_midi), 1.0, 0.0)))
+    if len(yin_hz) > 0:
+        yin_midi = _safe_hz_to_midi(np.asarray(yin_hz, dtype=float))
+        candidates.append(("yin", yin_midi, np.where(np.isfinite(yin_midi), 0.85, 0.0)))
+    if len(piptrack_hz) > 0:
+        piptrack_midi = _safe_hz_to_midi(np.asarray(piptrack_hz, dtype=float))
+        piptrack_quality = np.asarray(piptrack_quality, dtype=float)
+        piptrack_quality = np.where(np.isfinite(piptrack_midi), piptrack_quality, 0.0)
+        candidates.append(("piptrack", piptrack_midi, piptrack_quality))
+
+    if not candidates:
+        return (
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+        )
+
+    min_length = min(len(midi_values) for _, midi_values, _ in candidates)
+    if min_length <= 0:
+        return (
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+            np.array([], dtype=float),
+        )
+
+    pitch_times = librosa.frames_to_time(np.arange(min_length), sr=sr, hop_length=HOP_LENGTH)
+    pitch_midi = np.full(min_length, np.nan, dtype=float)
+    pitch_confidence = np.zeros(min_length, dtype=float)
+    pitch_support = np.zeros(min_length, dtype=float)
+
+    trimmed = [
+        (name, midi_values[:min_length], quality_values[:min_length])
+        for name, midi_values, quality_values in candidates
+    ]
+
+    for frame_idx in range(min_length):
+        frame_notes = []
+        frame_weights = []
+        source_names = []
+
+        for source_name, midi_values, quality_values in trimmed:
+            note = float(midi_values[frame_idx])
+            quality = float(quality_values[frame_idx])
+            if not np.isfinite(note) or quality <= 0:
+                continue
+            if source_name == "piptrack" and quality < 0.20:
+                continue
+            frame_notes.append(note)
+            frame_weights.append(quality)
+            source_names.append(source_name)
+
+        if not frame_notes:
+            continue
+
+        frame_support = float(len(frame_notes))
+        notes_arr = np.asarray(frame_notes, dtype=float)
+        weights_arr = np.asarray(frame_weights, dtype=float)
+        weighted_pitch = float(np.average(notes_arr, weights=weights_arr))
+        spread = float(np.std(notes_arr)) if notes_arr.size > 1 else 0.0
+        agreement_score = max(0.0, 1.0 - (spread / 1.5))
+        support_score = min(1.0, frame_support / 3.0)
+        pyin_bonus = 0.06 if "pyin" in source_names else 0.0
+
+        if frame_support >= 2:
+            confidence = (0.30 * support_score) + (0.64 * agreement_score) + pyin_bonus
+        else:
+            source = source_names[0]
+            if source == "pyin":
+                confidence = 0.45
+            elif source == "yin":
+                confidence = 0.34
+            else:
+                confidence = 0.28
+
+        pitch_midi[frame_idx] = weighted_pitch
+        pitch_confidence[frame_idx] = float(max(0.0, min(1.0, confidence)))
+        pitch_support[frame_idx] = frame_support
+
+    return pitch_times, pitch_midi, pitch_confidence, pitch_support
 
 
 def _pitch_movement_label(delta_semitones: float) -> str:
@@ -428,19 +567,52 @@ def _segment_pitch_payload(
     end_seconds: float,
     pitch_times: np.ndarray,
     pitch_midi: np.ndarray,
-) -> dict[str, Any] | None:
+    pitch_confidence: np.ndarray,
+    pitch_support: np.ndarray,
+    min_segment_confidence: float,
+    min_voiced_frames: int,
+    min_avg_support: float,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "pitch_resolved": False,
+        "pitch_confidence": 0.0,
+        "pitch_voiced_frames": 0,
+        "pitch_voiced_ratio": 0.0,
+        "pitch_resolution_reason": "missing_pitch_track",
+    }
     if pitch_times.size == 0 or pitch_midi.size == 0:
-        return None
+        return payload
 
     left_idx = int(np.searchsorted(pitch_times, start_seconds, side="left"))
     right_idx = int(np.searchsorted(pitch_times, end_seconds, side="right"))
     if right_idx <= left_idx:
-        return None
+        payload["pitch_resolution_reason"] = "empty_segment_window"
+        return payload
 
     segment_notes = pitch_midi[left_idx:right_idx]
+    segment_confidence = pitch_confidence[left_idx:right_idx]
+    segment_support = pitch_support[left_idx:right_idx]
     finite = segment_notes[np.isfinite(segment_notes)]
-    if finite.size < 3:
-        return None
+    finite_conf = segment_confidence[np.isfinite(segment_notes)]
+    finite_support = segment_support[np.isfinite(segment_notes)]
+    total_frames = max(1, right_idx - left_idx)
+    voiced_ratio = float(finite.size / total_frames)
+
+    payload["pitch_voiced_frames"] = int(finite.size)
+    payload["pitch_voiced_ratio"] = round(voiced_ratio, 3)
+    if finite.size < max(1, min_voiced_frames):
+        payload["pitch_resolution_reason"] = "low_voiced_frames"
+        return payload
+
+    average_confidence = float(np.median(finite_conf)) if finite_conf.size else 0.0
+    average_support = float(np.median(finite_support)) if finite_support.size else 0.0
+    payload["pitch_confidence"] = round(average_confidence, 3)
+    if average_support < min_avg_support:
+        payload["pitch_resolution_reason"] = "low_detector_agreement"
+        return payload
+    if average_confidence < min_segment_confidence:
+        payload["pitch_resolution_reason"] = "low_pitch_confidence"
+        return payload
 
     midpoint = max(1, finite.size // 2)
     first_half = finite[:midpoint]
@@ -455,15 +627,31 @@ def _segment_pitch_payload(
     movement_delta = pitch_end - pitch_start
     pitch_class = int(round(pitch_mid)) % 12
 
-    return {
-        "pitch_midi": round(pitch_mid, 2),
-        "pitch_midi_start": round(pitch_start, 2),
-        "pitch_midi_end": round(pitch_end, 2),
-        "pitch_variation_semitones": round(pitch_var, 2),
-        "pitch_movement_delta": round(movement_delta, 2),
-        "pitch_movement": _pitch_movement_label(movement_delta),
-        "pitch_class": pitch_class,
-    }
+    payload.update(
+        {
+            "pitch_resolved": True,
+            "pitch_resolution_reason": "resolved",
+            "pitch_midi": round(pitch_mid, 2),
+            "pitch_midi_start": round(pitch_start, 2),
+            "pitch_midi_end": round(pitch_end, 2),
+            "pitch_variation_semitones": round(pitch_var, 2),
+            "pitch_movement_delta": round(movement_delta, 2),
+            "pitch_movement": _pitch_movement_label(movement_delta),
+            "pitch_class": pitch_class,
+        }
+    )
+    return payload
+
+
+def _get_pitch_mode_config(pitch_mode: str) -> dict[str, float]:
+    normalized = str(pitch_mode).strip().lower()
+    return PITCH_MODE_CONFIG.get(normalized, PITCH_MODE_CONFIG[PITCH_MODE_BALANCED]).copy()
+
+
+def _pitch_summary(detections: list[dict[str, Any]]) -> tuple[int, int]:
+    melodic = [item for item in detections if item["element_key"] in MELODIC_PITCH_KEYS]
+    resolved = [item for item in melodic if item.get("pitch_resolved")]
+    return len(melodic), len(resolved)
 
 
 def _extract_segments(
@@ -769,7 +957,11 @@ def _build_scores(features: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     return scores
 
 
-def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> dict[str, Any]:
+def analyze_song(
+    file_path: str,
+    subgenre_profile: str = "General EDM-rap",
+    pitch_mode: str = PITCH_MODE_BALANCED,
+) -> dict[str, Any]:
     """Analyze a song and return timestamped detected elements with GarageBand recreation info."""
     y, sr = librosa.load(
         file_path,
@@ -781,7 +973,11 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
         raise ValueError("Audio is too short. Upload at least 2 seconds.")
 
     duration_seconds = float(librosa.get_duration(y=y, sr=sr))
-    pitch_times, pitch_midi = _extract_pitch_contour(y, sr)
+    effective_pitch_mode = str(pitch_mode).strip().lower()
+    if effective_pitch_mode not in PITCH_MODE_CONFIG:
+        effective_pitch_mode = PITCH_MODE_BALANCED
+    pitch_times, pitch_midi, pitch_confidence, pitch_support = _extract_pitch_contour(y, sr)
+    pitch_cfg = _get_pitch_mode_config(effective_pitch_mode)
 
     magnitude = np.abs(librosa.stft(y, n_fft=N_FFT, hop_length=HOP_LENGTH))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=N_FFT)
@@ -920,18 +1116,26 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
                     end_seconds=segment.end,
                     pitch_times=pitch_times,
                     pitch_midi=pitch_midi,
+                    pitch_confidence=pitch_confidence,
+                    pitch_support=pitch_support,
+                    min_segment_confidence=float(pitch_cfg["min_segment_confidence"]),
+                    min_voiced_frames=int(pitch_cfg["min_voiced_frames"]),
+                    min_avg_support=float(pitch_cfg["min_avg_support"]),
                 )
-                if pitch_payload:
-                    row.update(pitch_payload)
+                row.update(pitch_payload)
             detections.append(row)
 
     detections.sort(key=lambda detection: (detection["start_seconds"], -detection["confidence"]))
 
     bpm = _estimate_bpm(feature_map["onset"], sr)
     avg_confidence = float(np.mean([d["confidence"] for d in detections])) if detections else 0.0
+    melodic_total, melodic_resolved = _pitch_summary(detections)
+    resolved_ratio = (melodic_resolved / melodic_total) if melodic_total else 0.0
 
     notes = [
-        "Pitch contour metadata is attached to melodic detections for better MIDI movement.",
+        "Pitch contour metadata is derived from multi-detector consensus (pYIN + YIN + piptrack).",
+        f"Pitch mode: {effective_pitch_mode}. Resolved melodic regions: {melodic_resolved}/{melodic_total} "
+        f"({resolved_ratio:.1%}).",
         "Use AI stem-separated mode in the app for best isolation quality.",
     ]
     return {
@@ -939,8 +1143,12 @@ def analyze_song(file_path: str, subgenre_profile: str = "General EDM-rap") -> d
         "duration_seconds": round(duration_seconds, 2),
         "analyzed_seconds": round(min(duration_seconds, MAX_ANALYSIS_SECONDS), 2),
         "subgenre_profile": subgenre_profile,
+        "pitch_mode": effective_pitch_mode,
+        "pitch_min_segment_confidence": float(pitch_cfg["min_segment_confidence"]),
         "overall_detection_confidence": round(avg_confidence, 3),
         "pitch_frames_analyzed": int(np.sum(np.isfinite(pitch_midi))) if pitch_midi.size else 0,
+        "pitch_resolved_regions": int(melodic_resolved),
+        "pitch_total_melodic_regions": int(melodic_total),
         "detections": detections,
         "notes": notes,
     }

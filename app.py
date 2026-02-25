@@ -10,6 +10,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from song_analyzer.analysis import PITCH_MODE_BALANCED, PITCH_MODE_MAX_PRECISION
 from song_analyzer.garageband_export import (
     build_garageband_blueprint_midi,
     build_garageband_blueprint_text,
@@ -33,6 +34,10 @@ ANALYSIS_MODE_OPTIONS = {
     "Fast Mix Heuristic (legacy)": ANALYSIS_MODE_MIX,
 }
 DEMUCS_MODELS = [DEFAULT_DEMUCS_MODEL, "htdemucs_ft"]
+PITCH_MODE_OPTIONS = {
+    "Maximum Precision (consensus-only, skip uncertain notes)": PITCH_MODE_MAX_PRECISION,
+    "Balanced (more notes, allows fallback guesses)": PITCH_MODE_BALANCED,
+}
 
 
 def _detections_to_dataframe(detections: list[dict]) -> pd.DataFrame:
@@ -51,6 +56,9 @@ def _detections_to_dataframe(detections: list[dict]) -> pd.DataFrame:
                 "Pitch Start": detection.get("pitch_midi_start"),
                 "Pitch End": detection.get("pitch_midi_end"),
                 "Pitch Movement": detection.get("pitch_movement"),
+                "Pitch Resolved": detection.get("pitch_resolved"),
+                "Pitch Confidence": detection.get("pitch_confidence"),
+                "Pitch Reason": detection.get("pitch_resolution_reason"),
                 "GarageBand Similar Sound": detection["garageband_similar_sound"],
                 "GarageBand Patch": detection["garageband_patch"],
                 "Suggested Effects": " | ".join(detection["suggested_effects"]),
@@ -108,6 +116,12 @@ def main() -> None:
             index=0,
         )
     selected_mode = ANALYSIS_MODE_OPTIONS[selected_mode_label]
+    pitch_mode_label = st.selectbox(
+        "Pitch accuracy mode",
+        options=list(PITCH_MODE_OPTIONS.keys()),
+        index=0,
+    )
+    selected_pitch_mode = PITCH_MODE_OPTIONS[pitch_mode_label]
     selected_demucs_model = DEFAULT_DEMUCS_MODEL
     strict_stem_mode = False
     if selected_mode == ANALYSIS_MODE_STEM:
@@ -141,6 +155,7 @@ def main() -> None:
                 analysis_mode=selected_mode,
                 demucs_model=selected_demucs_model,
                 strict_stem_mode=strict_stem_mode,
+                pitch_mode=selected_pitch_mode,
             )
     except Exception as exc:  # noqa: BLE001
         st.error(f"Analysis failed: {exc}")
@@ -160,9 +175,13 @@ def main() -> None:
         f"{result.get('analysis_mode_requested', selected_mode)} | "
         "Mode used: "
         f"{result.get('analysis_mode', ANALYSIS_MODE_MIX)} | "
+        f"Pitch mode: {result.get('pitch_mode', selected_pitch_mode)} | "
         f"Stem separation used: {result.get('stem_separation_used', False)} | "
         f"Demucs model: {result.get('demucs_model') or 'N/A'}"
     )
+    resolved_col, total_col = st.columns(2)
+    resolved_col.metric("Pitch-Resolved Melodic Regions", f"{result.get('pitch_resolved_regions', 0)}")
+    total_col.metric("Total Melodic Regions", f"{result.get('pitch_total_melodic_regions', 0)}")
 
     detections = result["detections"]
     if not detections:
@@ -196,7 +215,13 @@ def main() -> None:
         "2. **Build Sheet (TXT)**: copy/paste track setup + FX chain + timestamps.\n"
         "3. **Track Sheet (TSV)**: paste into Notes/Sheets for detailed editing."
     )
-    midi_data = build_garageband_blueprint_midi(detections, bpm=result["bpm"])
+    min_pitch_confidence = 0.78 if selected_pitch_mode == PITCH_MODE_MAX_PRECISION else 0.52
+    midi_data = build_garageband_blueprint_midi(
+        detections,
+        bpm=result["bpm"],
+        pitch_mode=selected_pitch_mode,
+        min_pitch_confidence=min_pitch_confidence,
+    )
     blueprint_text = build_garageband_blueprint_text(result)
     blueprint_tsv = build_garageband_blueprint_tsv(detections)
 
@@ -236,7 +261,7 @@ def main() -> None:
     st.subheader("Post-Rip MIDI Analyzer (Quality Check)")
     st.caption(
         "Validate your MIDI against the original upload. This checks tempo, arrangement overlap, "
-        "timing, density, and MIDI formatting quality."
+        "timing, density, melodic contour, and MIDI formatting quality."
     )
     uploaded_midi_for_check = st.file_uploader(
         "Optional: upload a MIDI exported from GarageBand for verification",
@@ -260,6 +285,10 @@ def main() -> None:
     quality_col_1.metric("MIDI Match Score", f"{quality_report['overall_score']}")
     quality_col_2.metric("Quality Grade", quality_report["grade"])
     quality_col_3.metric("Tempo Match BPM", f"{quality_report['midi_bpm'] or 'N/A'}")
+    st.caption(
+        "Reference melodic pitch coverage: "
+        f"{quality_report.get('midi_meta', {}).get('reference_pitch_coverage', 'N/A')}"
+    )
 
     score_rows = [
         {"Metric": "Arrangement", "Score": quality_report["scores"]["arrangement_score"]},

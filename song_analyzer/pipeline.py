@@ -6,7 +6,11 @@ from typing import Any
 
 import numpy as np
 
-from song_analyzer.analysis import analyze_song as analyze_mix_song
+from song_analyzer.analysis import (
+    PITCH_MODE_BALANCED,
+    PITCH_MODE_MAX_PRECISION,
+    analyze_song as analyze_mix_song,
+)
 from song_analyzer.stem_separation import (
     DEFAULT_DEMUCS_MODEL,
     StemSeparationError,
@@ -121,9 +125,14 @@ def analyze_song(
     analysis_mode: str = ANALYSIS_MODE_STEM,
     demucs_model: str = DEFAULT_DEMUCS_MODEL,
     strict_stem_mode: bool = False,
+    pitch_mode: str = PITCH_MODE_BALANCED,
 ) -> dict[str, Any]:
     """Analyze song with optional AI stem separation refinement."""
-    mix_result = analyze_mix_song(file_path=file_path, subgenre_profile=subgenre_profile)
+    mix_result = analyze_mix_song(
+        file_path=file_path,
+        subgenre_profile=subgenre_profile,
+        pitch_mode=pitch_mode,
+    )
     mix_detections = _with_source(mix_result["detections"], "mix")
     base_notes = [
         note
@@ -136,6 +145,7 @@ def analyze_song(
     base_result["analysis_mode"] = ANALYSIS_MODE_MIX
     base_result["stem_separation_used"] = False
     base_result["demucs_model"] = None
+    base_result["pitch_mode"] = pitch_mode
     base_result["detections"] = mix_detections
     base_result["notes"] = base_notes
 
@@ -165,7 +175,11 @@ def analyze_song(
             allowed = STEM_TO_ELEMENT_KEYS.get(stem_name, ())
             if not allowed:
                 continue
-            stem_result = analyze_mix_song(file_path=stem_path, subgenre_profile=subgenre_profile)
+            stem_result = analyze_mix_song(
+                file_path=stem_path,
+                subgenre_profile=subgenre_profile,
+                pitch_mode=pitch_mode,
+            )
             chosen = _select_element_keys(
                 detections=stem_result["detections"],
                 allowed_keys=allowed,
@@ -196,7 +210,13 @@ def analyze_song(
             + (", ".join(active_sources) if active_sources else "mix-only fallback")
             + "."
         ),
-        "Exact mathematical stem separation from a mixed master is not physically guaranteed, "
-        "but this is significantly closer than mix-only heuristics.",
+        (
+            "Pitch precision: "
+            + (
+                "max consensus mode (no low-confidence melodic guessing)."
+                if pitch_mode == PITCH_MODE_MAX_PRECISION
+                else "balanced mode."
+            )
+        ),
     ]
     return result

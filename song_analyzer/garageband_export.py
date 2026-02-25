@@ -123,9 +123,12 @@ def build_garageband_blueprint_midi(
     detections: list[dict[str, Any]],
     bpm: float,
     ticks_per_beat: int = DEFAULT_TICKS_PER_BEAT,
+    pitch_mode: str = "balanced",
+    min_pitch_confidence: float = 0.52,
 ) -> bytes:
     """Return MIDI bytes representing detected arrangement lanes for GarageBand import."""
     effective_bpm = _safe_bpm(bpm)
+    strict_pitch = str(pitch_mode).strip().lower() == "max_precision"
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for detection in detections:
         grouped[detection["element_key"]].append(detection)
@@ -158,9 +161,21 @@ def build_garageband_blueprint_midi(
             if end_tick <= start_tick:
                 end_tick = start_tick + MIN_NOTE_TICKS
             velocity = int(max(32, min(127, round(float(detection["confidence"]) * 100))))
+            pitch_confidence = float(detection.get("pitch_confidence") or 0.0)
+            pitch_resolved = bool(detection.get("pitch_resolved"))
+            has_reliable_pitch = (
+                pitch_resolved
+                and detection.get("pitch_midi") is not None
+                and pitch_confidence >= float(min_pitch_confidence)
+            )
             primary_note = _safe_midi_note(detection.get("pitch_midi"), default_note)
 
             if element_key in MELODIC_CONTOUR_KEYS:
+                if strict_pitch and not has_reliable_pitch:
+                    # In max precision mode, skip uncertain melodic notes instead of guessing.
+                    continue
+                if not has_reliable_pitch:
+                    primary_note = default_note
                 start_note = _safe_midi_note(detection.get("pitch_midi_start"), primary_note)
                 end_note = _safe_midi_note(detection.get("pitch_midi_end"), primary_note)
                 duration_ticks = end_tick - start_tick
@@ -245,10 +260,15 @@ def build_garageband_blueprint_text(result: dict[str, Any], max_regions_per_elem
 
         for detection in element_detections[:max_regions_per_element]:
             pitch_hint = ""
-            if detection.get("pitch_midi") is not None:
+            if detection.get("pitch_resolved") and detection.get("pitch_midi") is not None:
                 pitch_hint = (
                     f" | pitch {detection.get('pitch_midi')} "
-                    f"({detection.get('pitch_movement', 'flat')})"
+                    f"({detection.get('pitch_movement', 'flat')}, conf {detection.get('pitch_confidence', 0.0)})"
+                )
+            elif element_key in MELODIC_CONTOUR_KEYS:
+                pitch_hint = (
+                    " | pitch unresolved "
+                    f"({detection.get('pitch_resolution_reason', 'unknown')})"
                 )
             lines.append(
                 "  - "
@@ -270,6 +290,9 @@ def build_garageband_blueprint_tsv(detections: list[dict[str, Any]]) -> str:
         "start_timestamp",
         "end_timestamp",
         "confidence",
+        "pitch_resolved",
+        "pitch_confidence",
+        "pitch_resolution_reason",
         "pitch_midi",
         "pitch_midi_start",
         "pitch_midi_end",
@@ -288,6 +311,9 @@ def build_garageband_blueprint_tsv(detections: list[dict[str, Any]]) -> str:
                     str(detection["start_timestamp"]),
                     str(detection["end_timestamp"]),
                     f"{float(detection['confidence']):.3f}",
+                    str(detection.get("pitch_resolved", "")),
+                    str(detection.get("pitch_confidence", "")),
+                    str(detection.get("pitch_resolution_reason", "")),
                     str(detection.get("pitch_midi", "")),
                     str(detection.get("pitch_midi_start", "")),
                     str(detection.get("pitch_midi_end", "")),
