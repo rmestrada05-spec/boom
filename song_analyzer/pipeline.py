@@ -132,6 +132,7 @@ def analyze_song(
     ]
 
     base_result = dict(mix_result)
+    base_result["analysis_mode_requested"] = analysis_mode
     base_result["analysis_mode"] = ANALYSIS_MODE_MIX
     base_result["stem_separation_used"] = False
     base_result["demucs_model"] = None

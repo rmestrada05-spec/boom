@@ -152,7 +152,9 @@ def main() -> None:
     duration_col.metric("Track Duration (s)", f"{result['duration_seconds']}")
     conf_col.metric("Avg Detection Confidence", f"{result['overall_detection_confidence']}")
     st.caption(
-        "Mode: "
+        "Mode requested: "
+        f"{result.get('analysis_mode_requested', selected_mode)} | "
+        "Mode used: "
         f"{result.get('analysis_mode', ANALYSIS_MODE_MIX)} | "
         f"Stem separation used: {result.get('stem_separation_used', False)} | "
         f"Demucs model: {result.get('demucs_model') or 'N/A'}"
