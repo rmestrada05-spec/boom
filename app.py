@@ -10,13 +10,14 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from song_analyzer.analysis import analyze_song
 from song_analyzer.garageband_export import (
     build_garageband_blueprint_midi,
     build_garageband_blueprint_text,
     build_garageband_blueprint_tsv,
 )
 from song_analyzer.midi_quality import analyze_midi_quality, build_midi_quality_text_report
+from song_analyzer.pipeline import ANALYSIS_MODE_MIX, ANALYSIS_MODE_STEM, analyze_song
+from song_analyzer.stem_separation import DEFAULT_DEMUCS_MODEL
 
 
 SUPPORTED_TYPES = ["wav", "mp3", "m4a", "flac", "ogg", "aac"]
@@ -27,6 +28,11 @@ SUBGENRE_OPTIONS = [
     "Phonk-EDM",
     "Jersey-club Influenced",
 ]
+ANALYSIS_MODE_OPTIONS = {
+    "AI Stem-Separated (Demucs, recommended)": ANALYSIS_MODE_STEM,
+    "Fast Mix Heuristic (legacy)": ANALYSIS_MODE_MIX,
+}
+DEMUCS_MODELS = [DEFAULT_DEMUCS_MODEL, "htdemucs_ft"]
 
 
 def _detections_to_dataframe(detections: list[dict]) -> pd.DataFrame:
@@ -40,6 +46,7 @@ def _detections_to_dataframe(detections: list[dict]) -> pd.DataFrame:
                 "Start (s)": detection["start_seconds"],
                 "End (s)": detection["end_seconds"],
                 "Confidence": detection["confidence"],
+                "Source": detection.get("analysis_source", "mix"),
                 "GarageBand Similar Sound": detection["garageband_similar_sound"],
                 "GarageBand Patch": detection["garageband_patch"],
                 "Suggested Effects": " | ".join(detection["suggested_effects"]),
@@ -81,14 +88,33 @@ def main() -> None:
             "- Melodic/harmonic layers (lead, pads/chords, counter melodies, stabs)\n"
             "- Vocal layers (main vocal, ad-libs, chops, vocal FX, one-shots)\n"
             "- EDM FX and transitions (risers, impacts, sweeps, textures, fills)\n"
-            "- Optional modern layers (growls, counter 808s, reese, plucks, supersaw)"
+            "- Optional modern layers (growls, counter 808s, reese, plucks, supersaw)\n"
+            "- AI stem-separated mode uses Demucs before analysis for much cleaner isolation"
         )
 
-    col_left, col_right = st.columns([2, 1])
+    col_left, col_mid, col_right = st.columns([2, 1, 1])
     with col_left:
         uploaded_file = st.file_uploader("Upload a song recording", type=SUPPORTED_TYPES)
-    with col_right:
+    with col_mid:
         selected_subgenre = st.selectbox("Subgenre profile", options=SUBGENRE_OPTIONS, index=0)
+    with col_right:
+        selected_mode_label = st.selectbox(
+            "Analysis mode",
+            options=list(ANALYSIS_MODE_OPTIONS.keys()),
+            index=0,
+        )
+    selected_mode = ANALYSIS_MODE_OPTIONS[selected_mode_label]
+    selected_demucs_model = DEFAULT_DEMUCS_MODEL
+    strict_stem_mode = False
+    if selected_mode == ANALYSIS_MODE_STEM:
+        control_col_1, control_col_2 = st.columns([1, 1])
+        with control_col_1:
+            selected_demucs_model = st.selectbox("Demucs model", options=DEMUCS_MODELS, index=0)
+        with control_col_2:
+            strict_stem_mode = st.checkbox(
+                "Fail instead of fallback if stem separation errors",
+                value=False,
+            )
 
     analyze_clicked = st.button("Analyze Song", type="primary", disabled=uploaded_file is None)
 
@@ -104,8 +130,14 @@ def main() -> None:
         temp_path = temp_file.name
 
     try:
-        with st.spinner("Analyzing song layers, BPM, and GarageBand matches..."):
-            result = analyze_song(temp_path, subgenre_profile=selected_subgenre)
+        with st.spinner("Analyzing song layers with selected mode..."):
+            result = analyze_song(
+                temp_path,
+                subgenre_profile=selected_subgenre,
+                analysis_mode=selected_mode,
+                demucs_model=selected_demucs_model,
+                strict_stem_mode=strict_stem_mode,
+            )
     except Exception as exc:  # noqa: BLE001
         st.error(f"Analysis failed: {exc}")
         return
@@ -119,6 +151,12 @@ def main() -> None:
     bpm_col.metric("Detected BPM", f"{result['bpm']}")
     duration_col.metric("Track Duration (s)", f"{result['duration_seconds']}")
     conf_col.metric("Avg Detection Confidence", f"{result['overall_detection_confidence']}")
+    st.caption(
+        "Mode: "
+        f"{result.get('analysis_mode', ANALYSIS_MODE_MIX)} | "
+        f"Stem separation used: {result.get('stem_separation_used', False)} | "
+        f"Demucs model: {result.get('demucs_model') or 'N/A'}"
+    )
 
     detections = result["detections"]
     if not detections:

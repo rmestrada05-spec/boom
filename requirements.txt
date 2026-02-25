@@ -7,3 +7,6 @@ soundfile
 altair
 audioread
 mido
+demucs
+torch
+torchaudio

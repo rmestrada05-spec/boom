@@ -10,6 +10,7 @@ Free Streamlit web app to:
 - Export a **GarageBand-importable MIDI blueprint** for arrangement ripping/editing
 - Generate a **copy/paste GarageBand build sheet** with track-by-track timestamp instructions
 - Run a **post-rip MIDI analyzer** to score how close your MIDI is to the original structure
+- Run an **AI stem-separated analysis mode (Demucs)** before timestamping layers
 
 ## What it does
 
@@ -22,6 +23,7 @@ The app analyzes the uploaded mix with spectral + rhythmic heuristics and genera
 - **GarageBand MIDI blueprint** (editable regions/tracks after import)
 - **Copy/paste build sheet** + TSV track sheet for fast recreation workflow
 - **Post-rip MIDI quality report** (tempo/arrangement/timing/density/format checks)
+- **AI stem-separated source routing** (drums/bass/vocals/other for cleaner detection)
 - **CSV/JSON export** of analysis data
 
 The detection model focuses on modern production building blocks used in styles like:
@@ -69,7 +71,10 @@ Streamlit Community Cloud will install `requirements.txt` automatically.
 
 1. Upload a song file.
 2. Pick a subgenre profile (optional but recommended).
-3. Click **Analyze Song**.
+3. Select analysis mode:
+   - `AI Stem-Separated (Demucs)` for highest-quality separation workflow
+   - `Fast Mix Heuristic` for quicker fallback mode
+4. Click **Analyze Song**.
 4. Review:
    - BPM
    - Timestamped detections
@@ -94,18 +99,27 @@ Streamlit Community Cloud will install `requirements.txt` automatically.
 
 ## Notes on accuracy
 
-- This is a **heuristic analysis engine** (not full stem separation).
+- In `AI Stem-Separated (Demucs)` mode, separation quality is model-driven and substantially closer to true stems.
+- In `Fast Mix Heuristic` mode, detections are estimated directly from the mixed audio.
 - Results are meant as a **production recreation assistant**, not a legal/forensic transcription.
 - Use your ears to refine patch/effect choices after loading the recommended GarageBand starting points.
 - MIDI quality checks validate structure/timing similarity; they cannot guarantee identical mastering or sound design.
+
+## About "exact" stem separation
+
+This app now includes **AI stem-separated mode via Demucs** (substantially closer to true stems than mix-only heuristics).
+However, exact mathematically perfect separation from a single mastered stereo file is generally not physically guaranteed.
+Use Demucs mode + the post-rip MIDI analyzer loop to get the closest practical reconstruction.
 
 ## Project structure
 
 ```text
 app.py                         # Streamlit UI
 song_analyzer/analysis.py      # Audio feature extraction + element detection
+song_analyzer/pipeline.py      # Mix vs AI stem-separated orchestration
 song_analyzer/garageband.py    # GarageBand patch/effects mapping
 song_analyzer/garageband_export.py  # GarageBand MIDI + copy/paste export helpers
 song_analyzer/midi_quality.py  # Post-rip MIDI comparison and quality scoring
+song_analyzer/stem_separation.py # Demucs stem extraction helpers
 requirements.txt
 ```
